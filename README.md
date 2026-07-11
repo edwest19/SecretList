@@ -138,21 +138,6 @@ Printing is designed to produce a small, foldable booklet rather than a stack of
 - **Duplex printing is requested by default** (both sides of the sheet, flipped on the short edge, matching the horizontal fold), along with A4 paper size. Whether these are actually honored depends on the printer/driver — the print dialog still lets you override paper size or duplex yourself if needed.
 - This layout only works because of the **12-tag-per-category limit** described above — a single record's fields are guaranteed to fit within one A5 half, so there's no per-record overflow or continuation-page logic.
 
-## Keyboard Navigation
-
-| Key(s) | Action |
-| --- | --- |
-| `↑` / `↓` | Previous / next record within the current category |
-| `Home` / `End` | First / last record within the current category |
-| `Ctrl+↑` / `Ctrl+↓` | Previous / next category |
-| `Ctrl+Home` / `Ctrl+End` | First category's first record / last category's last record |
-| `Enter` | Toggle Lock (browse) / Unlock (edit + save) |
-| `Esc` | Cancel an in-progress edit or new record, without saving |
-| `Ctrl+F` | Find by nickname |
-| `Tab` | Move through every button and field on screen, in order |
-
-All navigation works regardless of which control has focus while locked (browsing). While unlocked (editing), record/category navigation is disabled so an edit can't be lost by accidentally navigating away — every on-screen nav button (First/Prev/Next/Last, for both Category and Record) mirrors this same rule and greys out accordingly.
-
 ## Current Status
 
 **Working:**
@@ -186,9 +171,8 @@ dotnet run
 
 ## License
 
-Licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Free to
-view, use, and modify for any noncommercial purpose. Commercial use
-(including resale, e.g. via the Windows App Store) is reserved to the author.
+Licensed under the [MIT License](LICENSE). Free software — use, modify, and
+distribute it for any purpose.
 
 See [PRIVACY.md](PRIVACY.md) for the privacy policy — the short version is
 that the app collects no information.
