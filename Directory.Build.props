@@ -1,0 +1,14 @@
+<!--
+  AI-GENERATED CODE: This file was written by Claude (Anthropic), following
+  Directory.Build.props in edwest19/SecretLead.
+
+  Settings shared by every project in the solution.
+  Version is SecretList's version. A release tag vX.Y.Z must match it,
+  SecretList.UI/Package.appxmanifest must say X.Y.Z.0, and CHANGELOG.md must have an
+  entry for it.
+-->
+<Project>
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

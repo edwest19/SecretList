@@ -18,7 +18,7 @@ namespace SecretList;
 public sealed partial class MainPage : Page
 {
     private readonly RecordFileStore _store = new();
-    private readonly SchemaFileStore _schemaStore = new();
+    private readonly SchemaFileStore _schemaStore = new(DefaultSchemaLocation.GetPath); // AI-generated (Claude): SchemaFileStore now lives in SecretList.Core and is told where the packaged default is
     private List<EntityDefinition> _schema = new();
     private List<EntityRecord> _records = new();
 

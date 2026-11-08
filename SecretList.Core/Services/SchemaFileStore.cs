@@ -7,7 +7,9 @@
 using SecretList.Models;
 using System.Text;
 using System.Text.RegularExpressions;
-using Windows.ApplicationModel;
+// AI-generated (Claude): removed "using Windows.ApplicationModel;" - finding the
+// packaged default moved to SecretList.UI (DefaultSchemaLocation), so this class
+// has no Windows dependency and lives in SecretList.Core.
 
 namespace SecretList.Services;
 
@@ -45,6 +47,18 @@ public class SchemaFileStore
     // partial acceptance: either the whole category list is valid, or none
     // of it is used.
     private const int MaxTagsPerCategory = 12;
+
+    // AI-generated (Claude): returns the path of the packaged, read-only
+    // DefaultSchema.md. Supplied by the app (SecretList.UI's
+    // DefaultSchemaLocation.GetPath) and called at the same points the old
+    // GetDefaultSchemaPath() was, so behavior is unchanged.
+    private readonly Func<string> _getDefaultSchemaPath;
+
+    // AI-generated (Claude): constructor added when this class moved to SecretList.Core.
+    public SchemaFileStore(Func<string> getDefaultSchemaPath)
+    {
+        _getDefaultSchemaPath = getDefaultSchemaPath;
+    }
 
     // ^ optional leading #'s (1+) OR a single -/* bullet marker, then
     // whitespace, then the literal keyword, then whitespace, then the name.
@@ -119,28 +133,11 @@ public class SchemaFileStore
     // through ParseLines/Save, so nothing is normalized or lost.
     public void ExportDefaultSchema(string destFilePath)
     {
-        File.Copy(GetDefaultSchemaPath(), destFilePath, overwrite: true);
+        File.Copy(_getDefaultSchemaPath(), destFilePath, overwrite: true); // AI-generated (Claude): was GetDefaultSchemaPath()
     }
 
-    // Resolves the packaged, read-only DefaultSchema.md. Packaged apps
-    // can't write to their own install folder, so this file is naturally
-    // immutable at runtime - no ACL tricks needed. Falls back to the
-    // build output folder when running unpackaged (Package.Current
-    // throws InvalidOperationException without a package identity).
-    private static string GetDefaultSchemaPath()
-    {
-        string baseDir;
-        try
-        {
-            baseDir = Package.Current.InstalledLocation.Path;
-        }
-        catch (InvalidOperationException)
-        {
-            baseDir = AppContext.BaseDirectory;
-        }
-
-        return Path.Combine(baseDir, "Assets", "DefaultSchema.md");
-    }
+    // AI-generated (Claude): GetDefaultSchemaPath() moved, unchanged, to
+    // SecretList.UI/Services/DefaultSchemaLocation.cs.
 
     // Reads and parses the packaged DefaultSchema.md through the same
     // lenient parser used for schema.md, so there's exactly one parser
@@ -151,7 +148,7 @@ public class SchemaFileStore
     {
         try
         {
-            var lines = File.ReadAllLines(GetDefaultSchemaPath());
+            var lines = File.ReadAllLines(_getDefaultSchemaPath()); // AI-generated (Claude): was GetDefaultSchemaPath()
             var parsed = ParseLines(lines);
             if (parsed.Count > 0)
                 return parsed;

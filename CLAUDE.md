@@ -12,17 +12,20 @@ Constraints that shape design decisions here, per the README:
 - **No third-party NuGet packages** beyond what the official WinUI template provides.
 - **Human-readable storage** — both `records.txt` and `schema.md` (see below) must stay editable in Notepad with no app installed, and must keep working if hand-edited.
 - **Visual style is modern Fluent/Mica**, not the earlier green-screen terminal look — see "UI look" below. Don't reintroduce hardcoded black/green/Consolas styling in new XAML.
-- Passwords are never stored (see the `DIGITAL` category in [Services/DefaultSchema.cs](Services/DefaultSchema.cs)); `Notes` fields point to where a secret is kept instead.
+- Passwords are never stored (see the `DIGITAL` category in [SecretList.UI/Assets/DefaultSchema.md](SecretList.UI/Assets/DefaultSchema.md)); `Notes` fields point to where a secret is kept instead.
 
 ## Build & run
 
+<!-- AI-generated (Claude): commands and layout updated for the SecretList.Core / SecretList.Core.Tests / SecretList.UI split. -->
+Layout: `SecretList.Core/` (models, `RecordFileStore`, `SchemaFileStore`; plain .NET, no Windows dependencies), `SecretList.Core.Tests/` (MSTest), `SecretList.UI/` (the WinUI app, MSIX). `SecretList.slnx` holds all three; `Directory.Build.props` holds the version; `global.json` selects a .NET 10 SDK.
+
 ```powershell
-dotnet build                 # RID auto-resolves to win-<arch> via the csproj
-dotnet run                   # runs the packaged app; the WinApp build tools register a
-                             # debug package identity (AUMID) and launch with it
+dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj   # any OS, including Linux
+dotnet build SecretList.UI/SecretList.UI.csproj                  # Windows only; RID auto-resolves to win-<arch>
+dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only; registers a debug package identity (AUMID) and launches with it
 ```
 
-- Platforms: `x86;x64;ARM64`. There is no test project — do not attempt to run tests.
+- Platforms: `x86;x64;ARM64`.
 - `dotnet run` works on this packaged WinUI app because of the `Microsoft.Windows.SDK.BuildTools.WinApp` package, which hooks the .NET CLI Run target. In Visual Studio, the two launch profiles are `SecretList (Package)` (MSIX) and `SecretList (Unpackaged)`.
 - **Important for debugging:** because the app launches via package identity (AUMID) rather than as a direct child process, `Console.WriteLine` output is invisible in the terminal you ran `dotnet run` from. Anything you need to see at runtime should go to a file instead (see `PrintService`'s `Log()` for the existing pattern) or be inspected with a debugger/DebugView.
 
@@ -32,13 +35,13 @@ The app is a single-page WinUI app. `App` → `MainWindow` (hosts a `Frame`) →
 
 **UI look.** `MainWindow.xaml` uses `MicaBackdrop` and a standard `TitleBar`; `App.xaml` merges the default `XamlControlsResources` (Fluent). `MainPage.xaml` has no hardcoded colors/fonts — everything inherits theme resources (`{StaticResource TitleTextBlockStyle}`, `{ThemeResource CardBackgroundFillColorDefaultBrush}`, etc.), so the app follows system light/dark mode automatically. There is no bottom "function key" hint bar anymore; keyboard shortcuts are discoverable via the on-screen nav/action buttons instead (see "Global key handling" below).
 
-**Schema-driven records.** Three model concepts in [Models/](Models/):
+**Schema-driven records.** Three model concepts in [SecretList.Core/Models/](SecretList.Core/Models/):
 
 - `EntityDefinition` — a category (e.g. `LEGAL`, `FINANCIAL`), stored in its `Category` property, and its ordered list of `TagDefinition` fields.
 - `TagDefinition` — one field within a category: `Name`, `Order`, `IsRequired`, and a computed `IsMultiline` (true only when `Name` is `"Notes"` or `"Address"`, case-insensitive — see "Multi-line fields" below).
 - `EntityRecord` — one saved entry: a nickname (`NickName`), a category (`Category`), and a `Dictionary<string,string>` of tag → value.
 
-**Schema is loaded from `schema.md`, not hardcoded.** [Services/SchemaFileStore.cs](Services/SchemaFileStore.cs) reads `ApplicationData.Current.LocalFolder\schema.md` on startup:
+**Schema is loaded from `schema.md`, not hardcoded.** [SecretList.Core/Services/SchemaFileStore.cs](SecretList.Core/Services/SchemaFileStore.cs) reads `ApplicationData.Current.LocalFolder\schema.md` on startup:
 
 ```text
 # Category LEGAL
@@ -53,7 +56,7 @@ The app is a single-page WinUI app. `App` → `MainWindow` (hosts a `Frame`) →
 
 **12-tag-per-category cap.** `SchemaFileStore.ParseLines` enforces a hard `MaxTagsPerCategory = 12` after building the parsed list: if *any* category ends up with more than 12 tags, the whole parse is discarded (`ParseLines` returns an empty list), which is exactly the same signal `Load()`/`TryImport()` already treat as "unparseable" — so a schema violating the cap gets the identical fallback-to-default-and-flag-red treatment as a genuinely broken file, with no partial acceptance (it doesn't truncate to the first 12 tags). This is a deliberate invariant the UI and print layout both rely on: `MainPage` never has to handle a category whose fields don't fit on screen, and `PrintService` never has to handle a record whose fields don't fit in a printed A5 half (see Print, below) — there's no scrolling logic and no per-record print overflow/continuation-page logic anywhere in the codebase, so if this cap is ever changed, check both of those assumptions.
 
-**Persistence.** [Services/RecordFileStore.cs](Services/RecordFileStore.cs) reads/writes a single plain-text file at `ApplicationData.Current.LocalFolder\records.txt` (per-user app-data, only meaningful when running with package identity). The custom line format is:
+**Persistence.** [SecretList.Core/Services/RecordFileStore.cs](SecretList.Core/Services/RecordFileStore.cs) reads/writes a single plain-text file at `ApplicationData.Current.LocalFolder\records.txt` (per-user app-data, only meaningful when running with package identity). The custom line format is:
 
 ```text
 :cat.<Category>
@@ -65,9 +68,9 @@ The app is a single-page WinUI app. `App` → `MainWindow` (hosts a `Frame`) →
 
 Multi-line values (see below) still get one line per tag in the file: real newlines are encoded as a literal `\n` two-character sequence on save and decoded back on load. Known tradeoff: a value containing a literal backslash-`n` (e.g. some Windows paths) would be misread as a line break — acceptable for Address/Notes content, but worth remembering if this encoding is ever reused elsewhere.
 
-**Multi-line fields (Address/Notes).** `TagDefinition.IsMultiline` and its mirror `FieldRow.IsMultiline` ([ViewModels/FieldRow.cs](ViewModels/FieldRow.cs)) drive `FieldRowTemplateSelector` ([ViewModels/FieldRowTemplateSelector.cs](ViewModels/FieldRowTemplateSelector.cs)), which picks between two `DataTemplate`s defined in `MainPage.xaml`'s `Page.Resources`: `SingleLineFieldTemplate` (normal one-line `TextBox`) and `MultilineFieldTemplate` (`AcceptsReturn`, `TextWrapping="Wrap"`, `MinHeight="80"`, scrollable). The match is purely by tag name, not a schema.md setting — no new markdown syntax was needed for it.
+**Multi-line fields (Address/Notes).** `TagDefinition.IsMultiline` and its mirror `FieldRow.IsMultiline` ([SecretList.UI/ViewModels/FieldRow.cs](SecretList.UI/ViewModels/FieldRow.cs)) drive `FieldRowTemplateSelector` ([ViewModels/FieldRowTemplateSelector.cs](ViewModels/FieldRowTemplateSelector.cs)), which picks between two `DataTemplate`s defined in `MainPage.xaml`'s `Page.Resources`: `SingleLineFieldTemplate` (normal one-line `TextBox`) and `MultilineFieldTemplate` (`AcceptsReturn`, `TextWrapping="Wrap"`, `MinHeight="80"`, scrollable). The match is purely by tag name, not a schema.md setting — no new markdown syntax was needed for it.
 
-**UI state machine ([MainPage.xaml.cs](MainPage.xaml.cs)).** All interaction is keyboard-first (Tab-reachable throughout — no mouse required) with a modern Fluent look. Three integer/bool fields drive everything: `_currentTypeIndex`, `_currentRecordIndex`, `_isLocked`. `ShowCurrentRecord()` is the single render function — every navigation/edit handler mutates state then calls it. Records are filtered per-category on the fly via `CurrentTypeRecords` (a LINQ `.Where().ToList()`), so `_currentRecordIndex` indexes into that filtered list, not `_records`.
+**UI state machine ([SecretList.UI/MainPage.xaml.cs](SecretList.UI/MainPage.xaml.cs)).** All interaction is keyboard-first (Tab-reachable throughout — no mouse required) with a modern Fluent look. Three integer/bool fields drive everything: `_currentTypeIndex`, `_currentRecordIndex`, `_isLocked`. `ShowCurrentRecord()` is the single render function — every navigation/edit handler mutates state then calls it. Records are filtered per-category on the fly via `CurrentTypeRecords` (a LINQ `.Where().ToList()`), so `_currentRecordIndex` indexes into that filtered list, not `_records`.
 
 **Locked vs. edit mode.** `_isLocked` toggles all TextBoxes between read-only and editable, and also toggles the Category picker and every nav button. `FieldRow` binds `IsReadOnly` and a mirrored `IsTabStop` (`!IsReadOnly`) so locked fields are skipped by Tab. The Lock button (labeled "Unlock" / "Lock & Save") and Enter both call `ToggleLock()`, which:
 - **Locking** (was unlocked): calls `SaveCurrentRecordEdits()`, then clears `_pendingNewRecord` and the edit snapshot (see Cancel, below).
@@ -84,9 +87,9 @@ Multi-line values (see below) still get one line per tag in the file: real newli
 
 **On-screen layout.** Two toolbar rows above the field list: a Category row (label, `ComboBox`, First/Prev/Next/Last) and a Record row (First/Prev/Next/Last, Nickname, then Unlock/Add New/Cancel/Delete/Print). Tab order runs top-to-bottom through both rows before reaching the field list.
 
-**Find (Ctrl+F).** A modal-style overlay (`SearchOverlay` in [MainPage.xaml](MainPage.xaml), hidden by default) searches every record's `NickName` (case-insensitive substring match) regardless of the current category. Results populate a `ListView` bound to `RecordListItem` ([ViewModels/RecordListItem.cs](ViewModels/RecordListItem.cs)); selecting one via Enter or click calls `NavigateToRecord`, which finds the matching category index and record index and jumps there, closing the overlay.
+**Find (Ctrl+F).** A modal-style overlay (`SearchOverlay` in [SecretList.UI/MainPage.xaml](SecretList.UI/MainPage.xaml), hidden by default) searches every record's `NickName` (case-insensitive substring match) regardless of the current category. Results populate a `ListView` bound to `RecordListItem` ([SecretList.UI/ViewModels/RecordListItem.cs](SecretList.UI/ViewModels/RecordListItem.cs)); selecting one via Enter or click calls `NavigateToRecord`, which finds the matching category index and record index and jumps there, closing the overlay.
 
-**Print.** [Services/PrintService.cs](Services/PrintService.cs) uses the WinUI `PrintManager`/`PrintDocument` APIs to print (or preview) the full record collection, plain black-on-white text regardless of the app's own theme. `MainPage` initializes it with the window handle (`hwnd`) on load and triggers it from the Print button.
+**Print.** [SecretList.UI/Services/PrintService.cs](SecretList.UI/Services/PrintService.cs) uses the WinUI `PrintManager`/`PrintDocument` APIs to print (or preview) the full record collection, plain black-on-white text regardless of the app's own theme. `MainPage` initializes it with the window handle (`hwnd`) on load and triggers it from the Print button.
 
 Pagination is built for an **A5-fold booklet**, not one page per category:
 - Page size is **A4 portrait** (`PageWidth`/`PageHeight` at 96 DPI), split into two equal halves (`HalfHeight`) separated by a thin fold-line `Rectangle`, with a small reserved `FoldGap` between them. Folding a printed sheet in half horizontally turns each half into an A5-sized page.

@@ -38,25 +38,32 @@ Both are meant to be stored somewhere safe (like a home safe), alongside a copy 
 
 ## Architecture
 
-### Data Model (`Models/`)
+<!-- AI-generated (Claude): paths updated for the SecretList.Core / SecretList.Core.Tests / SecretList.UI split. -->
+The code is in three projects:
+
+- **`SecretList.Core/`** — the models and the records and schema files. Plain .NET with no Windows dependencies.
+- **`SecretList.Core.Tests/`** — MSTest tests for `SecretList.Core`.
+- **`SecretList.UI/`** — the WinUI 3 app (the window), packaged as MSIX. It uses `SecretList.Core` for the files.
+
+### Data Model (`SecretList.Core/Models/`)
 
 - **`TagDefinition`** — describes a single field: its name, display order, and whether it renders as a multi-line text box (see "Multi-line fields" below)
 - **`EntityDefinition`** — a named category (e.g. `LEGAL`, `FINANCIAL`) and its ordered list of tags
 - **`EntityRecord`** — one actual entry: a nickname (`NickName`), its category (`Category`), and a dictionary of tag → value pairs
 
-### Services (`Services/`)
+### Services (`SecretList.Core/Services/`, `SecretList.UI/Services/`)
 
-- **`RecordFileStore`** — reads and writes the entire record collection to/from a custom tagged-text format (see below), using only `System.IO`
-- **`SchemaFileStore`** — reads and writes the schema itself from a hand-editable markdown file, seeding a sensible default the first time the app runs (see "The Schema" below)
-- **`DefaultSchema`** — the starting/fallback set of categories and tags, used only to seed the schema file on first run or recover from a broken one
-- **`PrintService`** — builds and shows a native Windows print preview/dialog for the full record collection, laid out for an A5 booklet (see "Printing" below)
+- **`RecordFileStore`** (Core) — reads and writes the entire record collection to/from a custom tagged-text format (see below), using only `System.IO`
+- **`SchemaFileStore`** (Core) — reads and writes the schema itself from a hand-editable markdown file, seeding a sensible default the first time the app runs (see "The Schema" below)
+- **`Assets/DefaultSchema.md`** (UI, found by `DefaultSchemaLocation`) — the starting/fallback set of categories and tags, shipped read-only in the package and used only to seed the schema file on first run or recover from a broken one <!-- AI-generated (Claude): there is no DefaultSchema class; the default is this packaged file. -->
+- **`PrintService`** (UI) — builds and shows a native Windows print preview/dialog for the full record collection, laid out for an A5 booklet (see "Printing" below)
 
-### ViewModels (`ViewModels/`)
+### ViewModels (`SecretList.UI/ViewModels/`)
 
 - **`FieldRow`** / **`RecordListItem`** — small display-only wrapper classes that keep UI-specific logic (like read-only state, or formatted list labels) out of the core data model
 - **`FieldRowTemplateSelector`** — picks between a single-line and a multi-line field layout per row, based on the tag
 
-### UI (`MainPage.xaml` / `MainWindow.xaml`)
+### UI (`SecretList.UI/MainPage.xaml` / `SecretList.UI/MainWindow.xaml`)
 
 - A single-page screen showing **one record at a time**, styled with standard Fluent controls and a Mica window backdrop
 - **Locked (browse) mode** by default — fields are read-only, and full keyboard/button navigation is always available
@@ -164,10 +171,26 @@ Printing is designed to produce a small, foldable booklet rather than a stack of
 
 ## Building
 
-```text
-dotnet build
-dotnet run
-```
+<!-- AI-generated (Claude): commands updated for the three-project layout. -->
+`global.json` selects a .NET 10 SDK (10.0.100 or a later feature band).
+
+- Run the tests (any OS, including Linux):
+
+  ```text
+  dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj
+  ```
+
+- Build the app (Windows only):
+
+  ```text
+  dotnet build SecretList.UI/SecretList.UI.csproj
+  ```
+
+- Run the app as a package (Windows only):
+
+  ```text
+  dotnet run --project SecretList.UI/SecretList.UI.csproj
+  ```
 
 ## License
 
