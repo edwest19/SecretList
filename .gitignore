@@ -53,5 +53,15 @@ _ReSharper*/
 Generated\ Files/
 *_wpftmp.csproj
 
+# WinUI/MSIX signing
+*.pfx
+*.cer
+*.appxsym
+
+# Windows OS files
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
 # Zip files
 *.zip
