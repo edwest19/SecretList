@@ -165,9 +165,9 @@ Printing is designed to produce a small, foldable booklet rather than a stack of
 
 ## Requirements
 
-- Windows 10/11
-- .NET 10 SDK
-- Windows App SDK / WinUI 3
+<!-- AI-generated (Claude): x64 only from 0.1.0; minimum version from Package.appxmanifest (MinVersion 10.0.17763.0). -->
+- To run: 64-bit (x64) Windows 10 version 1809 (build 17763) or later, or Windows 11
+- To build: Windows and the .NET 10 SDK (the Windows App SDK comes from NuGet during the build)
 
 ## Building
 

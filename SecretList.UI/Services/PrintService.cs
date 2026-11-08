@@ -11,7 +11,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Printing;
 using SecretList.Models;
 using Windows.Graphics.Printing;
-using Windows.Storage;
 
 namespace SecretList.Services;
 
@@ -21,22 +20,9 @@ namespace SecretList.Services;
 // printer-friendly, duplex requested by default.
 public class PrintService
 {
-    // TEMP DEBUG: Console.WriteLine is invisible when the app is launched via
-    // AUMID/package identity (as `dotnet run` does for this project), so log
-    // to a plain file in the app's own sandboxed AppData instead - same folder
-    // records.txt lives in. Cleared fresh each time Initialize() runs.
-    // Remove once printing is confirmed working long-term.
-    private static readonly string LogPath =
-        Path.Combine(ApplicationData.Current.LocalFolder.Path, "print-debug.log");
-
-    private static void Log(string message)
-    {
-        try
-        {
-            File.AppendAllText(LogPath, $"{DateTime.Now:HH:mm:ss.fff}  {message}{Environment.NewLine}");
-        }
-        catch { /* logging must never crash the app */ }
-    }
+    // AI-generated (Claude): removed the temporary print-debug.log logging
+    // (Log(), LogPath and every Log call). It wrote each record's category and
+    // nickname to a file in LocalState. Printing itself is unchanged.
 
     private PrintDocument? _printDocument;
     private PrintManager? _printManager;
@@ -65,8 +51,6 @@ public class PrintService
     // (hwnd) so the print system knows which window this belongs to.
     public void Initialize(nint hwnd)
     {
-        try { File.Delete(LogPath); } catch { } // truncate previous run's log
-        Log($"Initialize called, hwnd={hwnd}");
         _printManager = PrintManagerInterop.GetForWindow(hwnd);
         _printManager.PrintTaskRequested += OnPrintTaskRequested;
         _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
@@ -81,7 +65,6 @@ public class PrintService
         _printDocument.Paginate += OnPaginate;
         _printDocument.GetPreviewPage += OnGetPreviewPage;
         _printDocument.AddPages += OnAddPages;
-        Log("PrintTaskRequested handler attached, PrintDocument created");
     }
 
     // Call this to actually show the Windows print dialog.
@@ -89,46 +72,36 @@ public class PrintService
     {
         _schema = schema;
         _records = records;
-        Log($"ShowPrintUIAsync called, hwnd={hwnd}, schema.Count={schema.Count}, records.Count={records.Count}");
-        foreach (var r in records)
-            Log($"  record: Category='{r.Category}', NickName='{r.NickName}'");
 
-        bool shown = await PrintManagerInterop.ShowPrintUIForWindowAsync(hwnd);
-        Log($"ShowPrintUIForWindowAsync returned {shown}");
+        await PrintManagerInterop.ShowPrintUIForWindowAsync(hwnd);
     }
 
     // Fires when the user actually confirms printing from the dialog.
     // Sets up the PrintDocument and builds every page in advance.
     private void OnPrintTaskRequested(PrintManager sender, PrintTaskRequestedEventArgs args)
     {
-        Log("OnPrintTaskRequested fired");
-
         var printTask = args.Request.CreatePrintTask("SecretList", sourceRequested =>
         {
-            Log("CreatePrintTask callback fired");
-
             // sourceRequested runs on a worker thread with no DispatcherQueue -
             // touching _printDocument (a UI-thread-affine object) directly here
             // throws RPC_E_WRONG_THREAD. Take a deferral and marshal the actual
             // work back onto the UI thread's DispatcherQueue.
             var deferral = sourceRequested.GetDeferral();
-            bool enqueued = _dispatcherQueue!.TryEnqueue(() =>
+            _dispatcherQueue!.TryEnqueue(() =>
             {
                 try
                 {
                     sourceRequested.SetSource(_printDocument!.DocumentSource);
-                    Log("SetSource called");
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
-                    Log("EXCEPTION setting source: " + ex);
+                    // AI-generated (Claude): was logged to print-debug.log; still not shown to the user.
                 }
                 finally
                 {
                     deferral.Complete();
                 }
             });
-            Log($"TryEnqueue returned {enqueued}");
         });
 
         // Request A4 paper and duplex, flipped on the short edge - the
@@ -140,41 +113,36 @@ public class PrintService
         {
             printTask.Options.MediaSize = PrintMediaSize.IsoA4;
             printTask.Options.Duplex = PrintDuplex.TwoSidedShortEdge;
-            Log("Requested MediaSize=IsoA4, Duplex=TwoSidedShortEdge");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Log("Could not set MediaSize/Duplex options: " + ex);
+            // AI-generated (Claude): was logged to print-debug.log. Not every driver
+            // exposes these options; the print dialog still lets the user choose.
         }
     }
 
     private void OnPaginate(object sender, PaginateEventArgs e)
     {
-        Log("OnPaginate fired");
         try
         {
             _pages = BuildAllPages();
-            Log($"Built {_pages.Count} pages");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Log("EXCEPTION in BuildAllPages: " + ex);
+            // AI-generated (Claude): was logged to print-debug.log.
             _pages = new List<UIElement>();
         }
 
         _printDocument!.SetPreviewPageCount(_pages.Count, PreviewPageCountType.Final);
-        Log($"SetPreviewPageCount({_pages.Count}) called");
     }
 
     private void OnGetPreviewPage(object sender, GetPreviewPageEventArgs e)
     {
-        Log($"OnGetPreviewPage fired for page {e.PageNumber}");
         _printDocument!.SetPreviewPage(e.PageNumber, _pages[e.PageNumber - 1]);
     }
 
     private void OnAddPages(object sender, AddPagesEventArgs e)
     {
-        Log($"OnAddPages fired, adding {_pages.Count} pages");
         foreach (var page in _pages)
         {
             _printDocument!.AddPage(page);
@@ -196,8 +164,6 @@ public class PrintService
             foreach (var record in typeRecords)
                 flat.Add((entityDef, record));
         }
-
-        Log($"BuildAllPages: {flat.Count} total records across {_schema.Count} categories");
 
         var pages = new List<UIElement>();
         for (int i = 0; i < flat.Count; i += 2)

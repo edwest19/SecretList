@@ -171,7 +171,7 @@ public sealed class SchemaFileStoreTests
             schema.Select(c => c.Category).ToArray());
         foreach (var category in schema)
         {
-            Assert.IsTrue(category.Tags.Count <= 12, category.Category);
+            Assert.IsLessThanOrEqualTo(12, category.Tags.Count, category.Category);
             Assert.IsFalse(category.Tags.Any(t => t.Name.Contains("password", StringComparison.OrdinalIgnoreCase)), category.Category);
         }
     }
