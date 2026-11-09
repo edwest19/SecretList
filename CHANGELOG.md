@@ -4,6 +4,11 @@
 
 Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released are under `## [Unreleased]`.
 
+## [Unreleased]
+
+### Documentation
+- `CLAUDE.md` records the checks made on the owner's PC with `v0.1.0-rc.1` (Enter on a Find result opens the record locked; `Scripts/Find-SecretListData.ps1` works), and drops the known gap "the release workflow has not run yet".
+
 ## [0.1.0] - 2026-11-09
 
 The first release.
