@@ -102,9 +102,8 @@ dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only:
 ## Known gaps
 
 - The limitations listed in the README's "Known limitations" are not fixed.
-- The release workflow has not run yet: the first signing and the Install steps are checked with `v0.1.0-rc.1`.
 - UI logic lives in `MainPage.xaml.cs`, not in `SecretList.Core`, so the window's behavior has no automated tests.
-- `Scripts/Find-SecretListData.ps1` is not run by CI.
+- `Scripts/Find-SecretListData.ps1` is not run by CI; the owner checked it by hand with `v0.1.0-rc.1`.
 - The `SecretList (Unpackaged)` launch profile is untested; the app's storage is written for package identity.
 - `TagDefinition.IsRequired` is never set or used.
 - The tooltip on a red "…" button says `schema.md` "is missing or couldn't be read", but a missing `schema.md` is created from the default and shows green.
@@ -113,7 +112,7 @@ dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only:
 
 - **UI state.** `MainPage` keeps `_currentTypeIndex` (category), `_currentRecordIndex` (index into `CurrentTypeRecords`, the current category's records in stored order) and `_isLocked`. Every handler changes state, then calls `ShowCurrentRecord()`, which rebuilds the field rows (`FieldsControl.ItemsSource`) and the buttons' enabled state.
 - **Editing.** Unlocking takes a snapshot of the record (`_editSnapshotNickName`, `_editSnapshotValues`) for Cancel. Add New sets `_pendingNewRecord`, which Cancel removes. Locking calls `SaveCurrentRecordEdits()`, which copies the boxes into the record and saves all records.
-- **Keys.** `Page_KeyDown` is attached both in `MainPage.xaml` and, in `MainPage_Loaded`, to the window's root with `handledEventsToo: true`. On the owner's PC (2026-11-08), ↓ moved one record and Enter on a focused Print button did not also unlock; change this only with a reproduced problem.
+- **Keys.** `Page_KeyDown` is attached both in `MainPage.xaml` and, in `MainPage_Loaded`, to the window's root with `handledEventsToo: true`. On the owner's PC, ↓ moved one record and Enter on a focused Print button did not also unlock (2026-11-08), and Enter on a Find result opened the record locked (2026-11-09, `v0.1.0-rc.1`); change this only with a reproduced problem.
 - **The 12-field limit** lets the screen and the printed half-sheet assume a category's fields fit; there is no scrolling or print overflow handling. Revisit both if the limit changes.
 - **Printing.** `PrintContent.Build` (Core, tested) decides what is printed; `PrintService` only lays it out, so don't put selection logic back in the UI.
 - **Printing threads.** `PrintDocument` is created once in `Initialize()` on the UI thread. The `PrintTaskRequested` callback's source delegate runs on a worker thread, so `SetSource` is marshaled back with the UI `DispatcherQueue` and a deferral. Creating or touching a `PrintDocument` on the worker thread throws `RPC_E_WRONG_THREAD` (`0x8001010E`).
