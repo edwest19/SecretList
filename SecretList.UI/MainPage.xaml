@@ -151,6 +151,14 @@
                             <MenuFlyoutItem x:Name="ImportSchemaMenuItem"
                                             Text="Import Schema"
                                             Click="ImportSchemaMenuItem_Click"/>
+                            <!-- AI-generated (Claude): Back Up and Restore (BackupStore in SecretList.Core). -->
+                            <MenuFlyoutSeparator/>
+                            <MenuFlyoutItem x:Name="BackupMenuItem"
+                                            Text="Back Up..."
+                                            Click="BackupMenuItem_Click"/>
+                            <MenuFlyoutItem x:Name="RestoreMenuItem"
+                                            Text="Restore..."
+                                            Click="RestoreMenuItem_Click"/>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>

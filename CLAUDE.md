@@ -29,8 +29,10 @@ SecretList is a WinUI 3 / .NET 10 desktop app, packaged as MSIX (x64), for keepi
 | `SecretList.Core/Services/SchemaFileStore.cs` | Reads `schema.md` (lenient parser, 12-field limit), seeds it from the packaged default, Import (`TryImport`), Export (`ExportDefaultSchema`), `Save` |
 | `SecretList.Core/Services/RecordFileStore.cs` | Reads and writes `records.txt` (keeps values outside the schema, line breaks → spaces, writes through `records.txt.tmp`) |
 | `SecretList.Core/Services/RecordValues.cs` | `OutsideSchema`: a record's non-empty values whose tag the schema doesn't list, by name |
+| `SecretList.Core/Services/SafeFile.cs` | Replaces a file through `<name>.tmp` + flush + `File.Replace`, so an interrupted write leaves the old file |
+| `SecretList.Core/Services/BackupStore.cs` | Back Up (copy both files into a new dated folder) and Restore (check, then replace both files) |
 | `SecretList.Core/Services/PrintContent.cs` | Which records are printed, in what order, with which fields (`PrintedRecord`, `PrintedField`) |
-| `SecretList.Core.Tests/` | MSTest 4.0.1: `SchemaFileStoreTests`, `RecordFileStoreTests`, `FileFormatTests` (known answers), `DataLossTests`, `RepositoryRulesTests`, `ReleaseRulesTests`; `TestHelper.cs`, `MSTestSettings.cs` |
+| `SecretList.Core.Tests/` | MSTest 4.0.1: `SchemaFileStoreTests`, `RecordFileStoreTests`, `FileFormatTests` (known answers), `DataLossTests`, `BackupTests`, `RepositoryRulesTests`, `ReleaseRulesTests`; `TestHelper.cs`, `MSTestSettings.cs` |
 | `SecretList.UI/SecretList.UI.csproj` | The WinUI 3 app, `net10.0-windows10.0.26100.0`, MSIX with the Windows App SDK included (`WindowsAppSDKSelfContained`) |
 | `SecretList.UI/Package.appxmanifest` | Package identity (name, publisher, version), `runFullTrust` |
 | `SecretList.UI/App.xaml(.cs)`, `MainWindow.xaml(.cs)` | App start-up; the window (Mica backdrop, title bar) hosting a `Frame` |
@@ -75,21 +77,21 @@ dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only:
 |---|---|---|
 | What SecretList is, and isn't | `Assets/DefaultSchema.md` (no password field) | `SchemaFileStoreTests.ShippedDefaultSchema_HasSevenCategories_EachWithinTheTwelveTagLimit_AndNoPasswordField` |
 | Is it safe? (network, permission, packages) | all of `SecretList.Core`, `SecretList.UI`; `Package.appxmanifest`; `*.csproj` | `RepositoryRulesTests` (all four); `Scripts/Test-Msix.ps1` in CI |
-| What SecretList stores, and where | `MainPage.xaml.cs` `DataFilePath`, `SchemaFilePath`; `RecordFileStore.WriteReplacing` | `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`; `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile`; publisher ID: not tested (computed from the publisher; matches the folder Windows created for the earlier `CN=AppPublisher` builds) |
+| What SecretList stores, and where | `MainPage.xaml.cs` `DataFilePath`, `SchemaFilePath`; `SafeFile.WriteAllBytes` | `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`; `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile`; `BackupTests.Restore_ReplacesBothFilesByteForByte_AndLeavesNoTemporaryFile`; publisher ID: not tested (computed from the publisher; matches the folder Windows created for the earlier `CN=AppPublisher` builds) |
 | Install (uninstall) | Windows behavior for MSIX packages | not tested |
 | Using SecretList: the screen, viewing and editing, Find, keyboard | `MainPage.xaml`, `MainPage.xaml.cs` (`ShowCurrentRecord`, `ToggleLock`, `CancelEdit`, `AddButton_Click`, `DeleteButton_Click`, `CategoryComboBox_SelectionChanged`, `RunSearch`, `NavigateToRecord`, `Page_KeyDown`, `ExitButton_Click`) | none (UI); checked by hand on Windows |
 | Printing | `PrintContent.cs` (what and in what order); `PrintService.cs` (`BuildAllPages`, `BuildA4Sheet`, `BuildRecordHalf`, `OnPrintTaskRequested`: layout, paper, duplex) | `DataLossTests.Print_*`; the layout is checked by hand on Windows |
+| Backup and Restore | `BackupStore.cs`, `SafeFile.cs`, `SchemaFileStore.TryRead`; `MainPage.xaml.cs` (`BackupMenuItem_Click`, `RestoreMenuItem_Click`, `PickFolderAsync`) | `BackupTests`; the pickers and dialogs are checked by hand on Windows |
 | Categories and fields (`schema.md`) | `SchemaFileStore.cs` (`Load`, `ParseLines`, `TryImport`, `ExportDefaultSchema`, `Save`); `MainPage.xaml.cs` (`UpdateImportButtonStatus`, `ImportSchemaMenuItem_Click`, `ExportSchemaMenuItem_Click`) | `SchemaFileStoreTests`; `FileFormatTests.SchemaFile_*`; `DataLossTests.Load_SchemaWithATagNameContainingAPeriod_*`, `TryImport_SchemaWithATagNameContainingAPeriod_*` |
 | The default categories (table) | `Assets/DefaultSchema.md` | `SchemaFileStoreTests.ShippedDefaultSchema_HasExactlyTheCategoriesAndTagsTheReadmeLists` (also checks the README rows) |
 | The records file | `RecordFileStore.cs`, `RecordValues.cs` | `RecordFileStoreTests`; `FileFormatTests.RecordsFile_*`, `Spec_ShowsTheseWorkedExamplesWordForWord`; `DataLossTests.Save_*` |
 | Building and testing | `global.json`, `*.csproj`, `.github/workflows/build.yml`, `Scripts/Test-Msix.ps1` | CI |
 | Releases | `Directory.Build.props`, `Package.appxmanifest`, `CHANGELOG.md` | `ReleaseRulesTests.ManifestVersion_IsTheProjectVersionPlusZero`, `ManifestPublisher_IsTheNameReleasesAreSignedAs` |
-| Known limitations | No Backup; `MainPage.xaml.cs` (`CurrentTypeRecords` shows schema categories only; no window-close handler); `RecordFileStore.Load` (missing empty line); `PrintService.BuildRecordHalf` (no overflow handling); `SchemaFileStore.ParseLines` (repeated category names) | none: each fix comes with a test that reproduces it first |
+| Known limitations | `MainPage.xaml.cs` (`CurrentTypeRecords` shows schema categories only; no window-close handler); `RecordFileStore.Load` (missing empty line); `PrintService.BuildRecordHalf` (no overflow handling); `SchemaFileStore.ParseLines` (repeated category names) | none: each fix comes with a test that reproduces it first |
 
 ## Known gaps
 
 - The limitations listed in the README's "Known limitations" are not fixed.
-- No Backup or Restore. Uninstalling deletes the user's data.
 - No release workflow, signing or GitHub release yet; `ReleaseRulesTests` doesn't yet check `release.yml`, the signing subject or a dated `CHANGELOG.md` entry.
 - UI logic lives in `MainPage.xaml.cs`, not in `SecretList.Core`, so the window's behavior has no automated tests.
 - `Scripts/Find-SecretListData.ps1` is not run by CI.

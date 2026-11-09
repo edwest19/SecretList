@@ -59,8 +59,11 @@ public sealed partial class MainPage : Page
 
     private readonly PrintService _printService = new();
 
+    private readonly BackupStore _backupStore; // AI-generated (Claude): Back Up and Restore
+
     public MainPage()
     {
+        _backupStore = new BackupStore(_schemaStore); // AI-generated (Claude)
         this.InitializeComponent();
         this.Loaded += MainPage_Loaded;
 
@@ -114,6 +117,11 @@ private void MainPage_Loaded(object sender, RoutedEventArgs e)
         // Export carries no such risk (it never touches active app state),
         // so it stays enabled regardless of lock state.
         ImportSchemaMenuItem.IsEnabled = _isLocked;
+        // AI-generated (Claude): Back Up copies the saved files, and Restore replaces them,
+        // so neither runs mid-edit (an unsaved edit wouldn't be in the backup, and Restore
+        // would discard it).
+        BackupMenuItem.IsEnabled = _isLocked;
+        RestoreMenuItem.IsEnabled = _isLocked;
 
         if (typeRecords.Count == 0)
         {
@@ -417,6 +425,110 @@ private void MainPage_Loaded(object sender, RoutedEventArgs e)
             };
             await dialog.ShowAsync();
         }
+    }
+
+    // AI-generated (Claude): Back Up - copies records.txt and schema.md, byte for byte, into
+    // a new "SecretList backup <date> <time>" folder inside a folder you pick
+    // (BackupStore.Backup). Uninstalling SecretList deletes its data folder; a backup
+    // outside it survives.
+    private async void BackupMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = await PickFolderAsync();
+        if (folder == null)
+            return; // user cancelled the picker
+
+        string title;
+        string message;
+        try
+        {
+            string backupFolder = _backupStore.Backup(DataFilePath, SchemaFilePath, folder.Path, DateTime.Now);
+            title = "Backed Up";
+            message = $"Your records and categories were copied to:\n{backupFolder}";
+        }
+        catch (Exception ex)
+        {
+            title = "Backup Failed";
+            message = $"Couldn't back up: {ex.Message}";
+        }
+
+        await ShowMessageAsync(title, message);
+    }
+
+    // AI-generated (Claude): Restore - after you pick a backup folder and confirm, replaces
+    // records.txt and schema.md with the backup's copies (BackupStore.TryRestore), then
+    // reloads. Refused, changing nothing, unless the folder holds both files and its
+    // schema.md is valid.
+    private async void RestoreMenuItem_Click(object sender, RoutedEventArgs e)
+    {
+        var folder = await PickFolderAsync();
+        if (folder == null)
+            return; // user cancelled the picker
+
+        var confirm = new ContentDialog
+        {
+            Title = "Restore From Backup?",
+            Content = $"This replaces your current records and categories with the ones in \"{folder.Name}\". It can't be undone. Back up first if you want to keep what you have now.",
+            PrimaryButtonText = "Restore",
+            CloseButtonText = "Cancel",
+            XamlRoot = this.Content.XamlRoot
+        };
+        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+            return;
+
+        string? refused;
+        string? error = null;
+        try
+        {
+            refused = _backupStore.TryRestore(folder.Path, DataFilePath, SchemaFilePath);
+        }
+        catch (Exception ex)
+        {
+            refused = null;
+            error = ex.Message;
+        }
+
+        if (refused != null)
+        {
+            await ShowMessageAsync("Restore Failed", $"Nothing was restored. {refused}");
+            return;
+        }
+
+        // Reload whatever is on disk now, even after an error part-way, so the screen
+        // shows the files as they are.
+        _schema = _schemaStore.Load(SchemaFilePath, out bool isSchemaValid);
+        CategoryComboBox.ItemsSource = _schema.Select(c => c.Category).ToList();
+        UpdateImportButtonStatus(isSchemaValid);
+        LoadRecords();
+        _currentTypeIndex = 0;
+        _currentRecordIndex = 0;
+        ShowCurrentRecord();
+
+        if (error != null)
+            await ShowMessageAsync("Restore Failed", $"The restore stopped with an error: {error}");
+    }
+
+    // AI-generated (Claude): the folder picker used by Back Up and Restore.
+    private static async Task<Windows.Storage.StorageFolder?> PickFolderAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FolderPicker();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindowInstance);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        picker.FileTypeFilter.Add("*");
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        return await picker.PickSingleFolderAsync();
+    }
+
+    // AI-generated (Claude): a one-button message dialog.
+    private async Task ShowMessageAsync(string title, string message)
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+            XamlRoot = this.Content.XamlRoot
+        };
+        await dialog.ShowAsync();
     }
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
