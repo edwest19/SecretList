@@ -1,0 +1,274 @@
+# ============================================================================
+# SecretList
+# Copyright (c) 2026 edwest19. Licensed under the MIT License (see LICENSE).
+# AI-GENERATED CODE: This file was written by Claude (Anthropic). It is
+# edwest19/SecretLead's release workflow with SecretList's names.
+# ============================================================================
+#
+# Release: builds, signs and publishes SecretList's MSIX installer.
+#
+# Only a version tag starts it: vX.Y.Z for a release, vX.Y.Z-rc.N for a pre-release.
+# Not a push to a branch, not a pull request, not a button.
+#
+# The three jobs, and why they are separate:
+#   build    Reads the repository and nothing more. Checks the tag against the version,
+#            the manifest and CHANGELOG.md, runs the tests, and packages the unsigned MSIX.
+#   sign     The only job that can reach the signing account. It runs in the GitHub
+#            environment "release", which waits for the owner's approval and accepts only
+#            "v" tags. It never checks out the repository; it receives the MSIX from build.
+#   release  The only job that can write to the repository, and all it writes is the
+#            GitHub Release.
+#   Each job gets only the permission its work needs.
+#
+# How it signs in to Azure:
+#   By OpenID Connect. GitHub gives the sign job a short-lived token naming this repository
+#   and the "release" environment; Azure accepts it only for that. The repository uses
+#   immutable subject claims, so the token's subject is repo:edwest19@5809459/SecretList@1296666450:environment:release
+#   (the owner and repository IDs never change and are never reused). No password, key or client
+#   secret is stored anywhere. AZURE_CLIENT_ID, AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID are
+#   identifiers, held as secrets of the "release" environment so only the sign job can read them.
+#
+# What stops a release:
+#   - The tag doesn't match Directory.Build.props' Version, the manifest's Version or
+#     Publisher is wrong, or CHANGELOG.md has no entry for the version.
+#   - A test fails.
+#   - The signed MSIX isn't validly signed, timestamped, and signed as EXPECTED_SIGNER.
+#
+# Actions are pinned to exact commits (version in the comment), so a later change to an
+# action can't alter a release unnoticed. The commits are the ones SecretLead's release uses,
+# which also match SecretList's build workflow (ReleaseRulesTests checks they are pinned).
+# ============================================================================
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Turn off the build tools' usage telemetry (.NET CLI and winapp only send it when this isn't "1").
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  WINAPP_CLI_TELEMETRY_OPTOUT: '1'
+  # The name every release is signed as. Package.appxmanifest's Publisher must be exactly this
+  # (it is case-sensitive: "S=ny"). ReleaseRulesTests checks that the two match.
+  EXPECTED_SIGNER: 'CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US'
+
+jobs:
+  build:
+    name: Check, test and package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Set up winapp (Microsoft's Windows App Development CLI)
+        uses: microsoft/setup-WinAppCli@9288bd0729bd3f71e2ed1b9eb247dc91470b824e # v0.3.0
+        with:
+          version: v0.7.1
+
+      - name: Check the tag against the version, the manifest and the changelog
+        id: version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -notmatch '^v(\d+\.\d+\.\d+)(-rc\.\d+)?$') {
+              throw "The tag '$tag' is not v<major>.<minor>.<patch>, optionally followed by -rc.<n>."
+          }
+          $version = $Matches[1]
+          $prerelease = [bool]$Matches[2]
+
+          [xml] $properties = Get-Content -LiteralPath 'Directory.Build.props' -Raw
+          $declared = @($properties.Project.PropertyGroup |
+                        ForEach-Object { $_.Version } |
+                        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+          if ($declared.Count -ne 1 -or $declared[0] -cne $version) {
+              throw "The tag says $version and Directory.Build.props says '$($declared -join ', ')'."
+          }
+
+          [xml] $manifest = Get-Content -LiteralPath 'SecretList.UI/Package.appxmanifest' -Raw
+          if ($manifest.Package.Identity.Version -cne "$version.0") {
+              throw "Package.appxmanifest says Version '$($manifest.Package.Identity.Version)'; it must be '$version.0'."
+          }
+          if ($manifest.Package.Identity.Publisher -cne $env:EXPECTED_SIGNER) {
+              throw "Package.appxmanifest says Publisher '$($manifest.Package.Identity.Publisher)'; it must be '$($env:EXPECTED_SIGNER)'."
+          }
+
+          $lines = @(Get-Content -LiteralPath 'CHANGELOG.md')
+          $heading = '^## \[' + [regex]::Escape($version) + '\] - \d{4}-\d{2}-\d{2}\s*$'
+          $starts = @(0..($lines.Count - 1) | Where-Object { $lines[$_] -cmatch $heading })
+          if ($starts.Count -ne 1) {
+              throw "CHANGELOG.md must have exactly one heading '## [$version] - YYYY-MM-DD'; found $($starts.Count)."
+          }
+          $start = $starts[0] + 1
+          $end = $lines.Count
+          for ($i = $start; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -cmatch '^## \[') { $end = $i; break }
+          }
+          $notes = @()
+          if ($end -gt $start) { $notes = @($lines[$start..($end - 1)]) }
+          if (@($notes | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count -eq 0) {
+              throw "The CHANGELOG.md entry for $version is empty."
+          }
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $notes | Set-Content -LiteralPath 'artifacts/release-notes.md' -Encoding utf8
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "prerelease=$($prerelease.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Tag $tag is version $version (pre-release: $prerelease). Version, manifest and changelog agree."
+
+      - name: Run the tests
+        run: dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj --configuration Release
+
+      - name: Package the MSIX (unsigned)
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msix = "artifacts/SecretList-$($env:VERSION)-x64.msix"
+          # Self-contained: .NET and the Windows App SDK go inside the MSIX, so users install nothing else.
+          winapp pack SecretList.UI/SecretList.UI.csproj -c Release --arch x64 --no-sign -p SelfContained=true --output $msix
+          if ($LASTEXITCODE -ne 0) { throw "winapp pack failed with exit code $LASTEXITCODE." }
+          if (-not (Test-Path -LiteralPath $msix)) { throw "winapp pack reported success but $msix is missing." }
+          Write-Host "Packaged $msix ($((Get-Item -LiteralPath $msix).Length) bytes)."
+          ./Scripts/Test-Msix.ps1 -Path $msix -Version "$($env:VERSION).0" -Publisher $env:EXPECTED_SIGNER
+
+      - name: Hand the unsigned MSIX to the sign job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  sign:
+    name: Sign the MSIX
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: Receive the unsigned MSIX
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unsigned
+          path: ${{ runner.temp }}/release
+
+      - name: Locate the MSIX
+        id: locate
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msix = Join-Path $env:RUNNER_TEMP "release/SecretList-$($env:VERSION)-x64.msix"
+          if (-not (Test-Path -LiteralPath $msix)) { throw "$msix did not arrive from the build job." }
+          "msix=$((Resolve-Path -LiteralPath $msix).Path)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Sign in to Azure
+        uses: Azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: edwest19
+          certificate-profile-name: CodeSigning-Apps
+          files: ${{ steps.locate.outputs.msix }}
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Check the signature and record the SHA-256
+        shell: pwsh
+        env:
+          MSIX: ${{ steps.locate.outputs.msix }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signature = Get-AuthenticodeSignature -LiteralPath $env:MSIX
+          if ($signature.Status -ne 'Valid') {
+              throw "The MSIX's signature status is '$($signature.Status)': $($signature.StatusMessage)"
+          }
+          if ($signature.SignerCertificate.Subject -cne $env:EXPECTED_SIGNER) {
+              throw "The MSIX is signed as '$($signature.SignerCertificate.Subject)'. A release is signed as '$($env:EXPECTED_SIGNER)'."
+          }
+          if ($null -eq $signature.TimeStamperCertificate) {
+              throw "The MSIX is signed but has no timestamp, so its signature would stop being valid when the certificate expires."
+          }
+          $name = Split-Path -Leaf $env:MSIX
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $env:MSIX).Hash
+          "$hash  $name" | Set-Content -LiteralPath "$($env:MSIX).sha256" -Encoding ascii
+          Write-Host "$name is signed by $($signature.SignerCertificate.Subject), timestamped. SHA-256 $hash"
+
+      - name: Hand the signed MSIX to the release job
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish the GitHub Release
+    needs: [ build, sign ]
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Receive the signed MSIX
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: signed
+          path: release
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $msix = Join-Path 'release' "SecretList-$($env:VERSION)-x64.msix"
+          $recorded = ((Get-Content -LiteralPath "$msix.sha256" -TotalCount 1) -split '  ', 2)[0]
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $msix).Hash
+          if ($hash -ne $recorded) {
+              throw "The MSIX's SHA-256 is $hash but the sign job recorded $recorded."
+          }
+          $arguments = @(
+              'release', 'create', $env:GITHUB_REF_NAME,
+              $msix, "$msix.sha256",
+              '--title', "SecretList $($env:GITHUB_REF_NAME.TrimStart('v'))",
+              '--notes-file', 'release/release-notes.md',
+              '--verify-tag'
+          )
+          if ($env:PRERELEASE -eq 'true') { $arguments += '--prerelease' }
+          gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE." }

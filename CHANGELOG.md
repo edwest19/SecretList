@@ -4,7 +4,9 @@
 
 Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released are under `## [Unreleased]`.
 
-## [Unreleased]
+## [0.1.0] - 2026-11-09
+
+The first release.
 
 ### Added
 - **Back Up and Restore**, in the "…" menu. Back Up copies `records.txt` and `schema.md` into a new `SecretList backup <date> <time>` folder inside a folder you pick, so your data survives uninstalling. Restore replaces both files with a backup's copies after you confirm, refusing (and changing nothing) unless the backup has both files and a valid `schema.md`. Both are disabled while editing.
@@ -34,6 +36,7 @@ Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released 
 - `Scripts/Copy-SecretList.ps1`, a personal copy-the-repository tool with fixed paths, is removed.
 
 ### Project
+- Releases are built, signed with Azure Artifact Signing (after the owner's approval) and published by `.github/workflows/release.yml` when a `vX.Y.Z` or `vX.Y.Z-rc.N` tag is pushed. `ReleaseRulesTests` also checks the signer, the signing subject, the README's release section and this changelog's entry for the version.
 - The code is split into three projects. `SecretList.Core` holds the models and the `records.txt` and `schema.md` code, and has no Windows dependencies. `SecretList.Core.Tests` holds MSTest tests for it. `SecretList.UI` is the WinUI app, which calls `SecretList.Core`. The app behaves the same as before.
 - The version is set once, in `Directory.Build.props` (0.1.0). `global.json` selects a .NET 10 SDK. `SecretList.slnx` holds the three projects.
 - `.gitignore` also ignores signing files (`*.pfx`, `*.cer`).

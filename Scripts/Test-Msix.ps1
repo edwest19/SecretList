@@ -7,7 +7,7 @@
   ============================================================================
 
   Checks a packaged SecretList MSIX before it is signed or published. Used by
-  .github/workflows/build.yml (every pull request), and the release workflow once it exists.
+  .github/workflows/build.yml (every pull request) and release.yml (every release).
 
   It fails unless:
     - the package's Publisher and Version are the expected ones;

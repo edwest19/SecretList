@@ -13,9 +13,9 @@ namespace SecretList.Core.Tests;
 
 /// <summary>
 /// Keeps the release settings consistent, so a broken release is found in a pull request
-/// instead of after a tag is pushed: the MSIX publisher, the version, the package name,
-/// pinned workflow actions, x64 only, and the solution file. The checks that need the
-/// release workflow (signer, signing subject, dated changelog entry) are added with it.
+/// instead of after a tag is pushed: the signer, the version in three places, the package
+/// name, the signing subject, the README's release section, pinned workflow actions, x64
+/// only, and the solution file. (AI-generated (Claude): release.yml checks added with it.)
 /// </summary>
 [TestClass]
 public sealed class ReleaseRulesTests
@@ -24,15 +24,21 @@ public sealed class ReleaseRulesTests
         XDocument.Parse(ReadRepoFile("SecretList.UI", "Package.appxmanifest"))
             .Descendants().Single(e => e.Name.LocalName == "Identity");
 
+    private static string ReleaseWorkflow() => ReadRepoFile(".github", "workflows", "release.yml");
+
     private static string ProjectVersion() =>
         XDocument.Parse(ReadRepoFile("Directory.Build.props")).Descendants("Version").Single().Value;
 
     [TestMethod]
     public void ManifestPublisher_IsTheNameReleasesAreSignedAs()
     {
+        var signer = Regex.Match(ReleaseWorkflow(), @"EXPECTED_SIGNER:\s*'([^']+)'");
+        Assert.IsTrue(signer.Success, "release.yml must set EXPECTED_SIGNER.");
+
         // Case-sensitive: Windows refuses to sign an MSIX whose Publisher differs from the
         // certificate subject (Azure Artifact Signing, account edwest19, profile CodeSigning-Apps).
-        Assert.AreEqual("CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US", (string?)ManifestIdentity().Attribute("Publisher"));
+        Assert.AreEqual("CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US", signer.Groups[1].Value);
+        Assert.AreEqual(signer.Groups[1].Value, (string?)ManifestIdentity().Attribute("Publisher"));
     }
 
     [TestMethod]
@@ -54,6 +60,50 @@ public sealed class ReleaseRulesTests
 
         Assert.AreEqual(packageName, (string?)ManifestIdentity().Attribute("Name"));
         Assert.Contains($"$packageName = '{packageName}'", ReadRepoFile("Scripts", "Find-SecretListData.ps1"));
+    }
+
+    [TestMethod]
+    public void Changelog_HasAnEntryForTheProjectVersion()
+    {
+        var version = ProjectVersion();
+        var lines = ReadRepoFile("CHANGELOG.md").Split('\n').Select(l => l.TrimEnd('\r')).ToArray();
+        var heading = new Regex(@"^## \[" + Regex.Escape(version) + @"\] - \d{4}-\d{2}-\d{2}\s*$");
+
+        var starts = Enumerable.Range(0, lines.Length).Where(i => heading.IsMatch(lines[i])).ToArray();
+        Assert.HasCount(1, starts, $"CHANGELOG.md needs exactly one heading '## [{version}] - YYYY-MM-DD'.");
+
+        var notes = lines.Skip(starts[0] + 1).TakeWhile(l => !l.StartsWith("## [", StringComparison.Ordinal));
+        Assert.IsTrue(notes.Any(l => !string.IsNullOrWhiteSpace(l)), $"The CHANGELOG.md entry for {version} is empty.");
+    }
+
+    [TestMethod]
+    public void SigningSubject_IsStatedTheSameEverywhere_ForTheReleaseEnvironment()
+    {
+        // The Azure federated credential trusts exactly this immutable OIDC subject.
+        var subject = new Regex(@"repo:[^@\s/]+@\d+/[^@\s:]+@\d+:environment:[A-Za-z0-9_-]+");
+        var workflow = ReleaseWorkflow();
+        var stated = new[] { ReadRepoFile("README.md"), ReadRepoFile("CLAUDE.md"), workflow }
+            .Select(text => subject.Match(text).Value).ToArray();
+
+        Assert.IsTrue(stated.All(s => s.Length > 0), "README.md, CLAUDE.md and release.yml must each state the signing subject.");
+        Assert.HasCount(1, stated.Distinct(), $"The signing subject differs between files: {string.Join(" | ", stated)}");
+        Assert.Contains("/SecretList@1296666450:", stated[0], "The subject must name this repository by its ID.");
+
+        var environment = Regex.Match(workflow, @"^\s*environment:\s*(\S+)\s*$", RegexOptions.Multiline).Groups[1].Value;
+        Assert.IsTrue(stated[0].EndsWith(":environment:" + environment, StringComparison.Ordinal),
+            $"The subject {stated[0]} must name the sign job's environment '{environment}'.");
+    }
+
+    [TestMethod]
+    public void Readme_ReleaseSection_MatchesTheWorkflow()
+    {
+        var workflow = ReleaseWorkflow();
+        var readme = ReadRepoFile("README.md");
+        string Setting(string name) => Regex.Match(workflow, name + @":\s*'?([^'\r\n]+?)'?\s*$", RegexOptions.Multiline).Groups[1].Value;
+
+        Assert.Contains($"made by `{Setting("EXPECTED_SIGNER")}`", readme);
+        Assert.Contains($"(account `{Setting("signing-account-name")}`, profile `{Setting("certificate-profile-name")}`, East US)", readme);
+        Assert.Contains("https://eus.codesigning.azure.net/", workflow, "README says East US; the endpoint must be East US's.");
     }
 
     [TestMethod]
@@ -88,9 +138,12 @@ public sealed class ReleaseRulesTests
         var project = XDocument.Parse(ReadRepoFile("SecretList.UI", "SecretList.UI.csproj"));
         Assert.AreEqual("x64", project.Descendants("Platforms").Single().Value);
 
-        var build = ReadRepoFile(".github", "workflows", "build.yml");
-        Assert.Contains("winapp pack SecretList.UI/SecretList.UI.csproj -c Release --arch x64", build, "build.yml must package x64.");
-        Assert.DoesNotContain("arm64", build, "build.yml must not build arm64.");
+        foreach (var workflow in new[] { "build.yml", "release.yml" })
+        {
+            var text = ReadRepoFile(".github", "workflows", workflow);
+            Assert.Contains("winapp pack SecretList.UI/SecretList.UI.csproj -c Release --arch x64", text, $"{workflow} must package x64.");
+            Assert.DoesNotContain("arm64", text, $"{workflow} must not build arm64.");
+        }
     }
 
     [TestMethod]
