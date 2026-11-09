@@ -29,6 +29,9 @@ internal static class TestHelper
     /// <summary>The full path of a file in the repository, given its path parts from the root.</summary>
     public static string RepoPath(params string[] path) => Path.Combine([RepoRoot(), .. path]);
 
+    /// <summary>The text of a file in the repository, given its path parts from the root.</summary>
+    public static string ReadRepoFile(params string[] path) => File.ReadAllText(RepoPath(path));
+
     /// <summary>The default schema shipped in the app package.</summary>
     public static string ShippedDefaultSchemaPath() => RepoPath("SecretList.UI", "Assets", "DefaultSchema.md");
 

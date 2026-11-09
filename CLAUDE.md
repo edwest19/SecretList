@@ -17,7 +17,7 @@ Constraints that shape design decisions here, per the README:
 ## Build & run
 
 <!-- AI-generated (Claude): commands and layout updated for the SecretList.Core / SecretList.Core.Tests / SecretList.UI split. -->
-Layout: `SecretList.Core/` (models, `RecordFileStore`, `SchemaFileStore`; plain .NET, no Windows dependencies), `SecretList.Core.Tests/` (MSTest), `SecretList.UI/` (the WinUI app, MSIX). `SecretList.slnx` holds all three; `Directory.Build.props` holds the version; `global.json` selects a .NET 10 SDK.
+Layout: `SecretList.Core/` (models, `RecordFileStore`, `SchemaFileStore`; plain .NET, no Windows dependencies), `SecretList.Core.Tests/` (MSTest), `SecretList.UI/` (the WinUI app, MSIX). `SecretList.slnx` holds all three; `Directory.Build.props` holds the version; `global.json` selects a .NET 10 SDK. `.github/workflows/build.yml` runs on every pull request (tests, Windows build, unsigned MSIX checked by `Scripts/Test-Msix.ps1`). `RepositoryRulesTests` and `ReleaseRulesTests` enforce the repository and release rules; don't loosen them to make a change pass.
 
 ```powershell
 dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj   # any OS, including Linux

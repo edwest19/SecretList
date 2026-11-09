@@ -1,0 +1,98 @@
+# ============================================================================
+# SecretList
+# Copyright (c) 2026 edwest19. Licensed under the MIT License (see LICENSE).
+# AI-GENERATED CODE: This file was written by Claude (Anthropic). It is
+# edwest19/SecretLead's build workflow with SecretList's names.
+# ============================================================================
+#
+# Build: runs on every pull request and every push to main.
+#   test   Runs the tests.
+#   build  Builds the whole solution, then packages the desktop app as an unsigned MSIX
+#          the same way the release workflow will, so packaging problems show up in the
+#          pull request rather than at release time. Nothing here is signed or published.
+#
+# Actions are pinned to exact commits (version in the comment).
+# ============================================================================
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# The workflow only needs to read the code.
+permissions:
+  contents: read
+
+# Turn off the build tools' usage telemetry (.NET CLI and winapp only send it when this isn't "1").
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  WINAPP_CLI_TELEMETRY_OPTOUT: '1'
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Test
+        run: dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj --configuration Release
+
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Set up winapp (Microsoft's Windows App Development CLI)
+        uses: microsoft/setup-WinAppCli@9288bd0729bd3f71e2ed1b9eb247dc91470b824e # v0.3.0
+        with:
+          version: v0.7.1
+
+      - name: Build the solution
+        run: dotnet build SecretList.slnx --configuration Release
+
+      - name: Package the MSIX (unsigned, as the release workflow will)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          [xml] $properties = Get-Content -LiteralPath 'Directory.Build.props' -Raw
+          $version = @($properties.Project.PropertyGroup | ForEach-Object { $_.Version } | Where-Object { $_ })[0]
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $msix = "artifacts/SecretList-$version-x64-unsigned.msix"
+          winapp pack SecretList.UI/SecretList.UI.csproj -c Release --arch x64 --no-sign -p SelfContained=true --output $msix
+          if ($LASTEXITCODE -ne 0) { throw "winapp pack failed with exit code $LASTEXITCODE." }
+          if (-not (Test-Path -LiteralPath $msix)) { throw "winapp pack reported success but $msix is missing." }
+          Write-Host "Packaged $msix ($((Get-Item -LiteralPath $msix).Length) bytes)."
+          [xml] $source = Get-Content -LiteralPath 'SecretList.UI/Package.appxmanifest' -Raw
+          $publisher = $source.Package.Identity.Publisher
+          ./Scripts/Test-Msix.ps1 -Path $msix -Version "$version.0" -Publisher $publisher
+
+      - name: Keep the unsigned MSIX for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: SecretList-unsigned-msix
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7

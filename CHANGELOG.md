@@ -17,3 +17,5 @@ Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released 
 - The code is split into three projects. `SecretList.Core` holds the models and the `records.txt` and `schema.md` code, and has no Windows dependencies. `SecretList.Core.Tests` holds MSTest tests for it. `SecretList.UI` is the WinUI app, which calls `SecretList.Core`. The app behaves the same as before.
 - The version is set once, in `Directory.Build.props` (0.1.0). `global.json` selects a .NET 10 SDK. `SecretList.slnx` holds the three projects.
 - `.gitignore` also ignores signing files (`*.pfx`, `*.cer`).
+- Every pull request runs the tests, builds the app and packages an unsigned MSIX checked by `Scripts/Test-Msix.ps1` (`.github/workflows/build.yml`).
+- `RepositoryRulesTests` and `ReleaseRulesTests` check the repository and release rules: Microsoft packages only, no network API, only `runFullTrust`, data only in the package data folder, the publisher, the version, the package name, pinned workflow actions, x64 only and the solution file.

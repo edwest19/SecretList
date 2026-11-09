@@ -192,6 +192,11 @@ Printing is designed to produce a small, foldable booklet rather than a stack of
   dotnet run --project SecretList.UI/SecretList.UI.csproj
   ```
 
+<!-- AI-generated (Claude): continuous integration. -->
+Every pull request and every push to `main` runs `.github/workflows/build.yml` on `windows-latest`: the tests, a Release build of `SecretList.slnx`, and an unsigned x64 MSIX made with `winapp pack` and checked by `Scripts/Test-Msix.ps1` (publisher, version, no package dependencies, only `runFullTrust`, and the app, `SecretList.Core.dll` and the .NET runtime inside). Nothing in that workflow is signed or published.
+
+The tests include `RepositoryRulesTests` (Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder) and `ReleaseRulesTests` (publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file).
+
 ## License
 
 Licensed under the [MIT License](LICENSE). Free software — use, modify, and
