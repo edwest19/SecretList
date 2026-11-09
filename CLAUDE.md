@@ -1,121 +1,105 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+> AI-generated: written by Claude (Anthropic) for AI assistants working in this repository. The owner's own instructions (Claude Project / Claude Code user instructions) also apply; where they differ on something specific to this repository, this file wins.
 
-## What this is
+SecretList is a WinUI 3 / .NET 10 desktop app, packaged as MSIX (x64), for keeping an offline, printable list of who to call and where to look. **[README.md](README.md) is the specification.** Read it before changing anything.
 
-SecretList is a WinUI 3 / Windows App SDK desktop app (packaged MSIX) targeting `net10.0-windows10.0.26100.0`. It's a personal, offline reference document answering "if I'm gone, who does someone call, and where do they look" — not an address book or password manager. The app itself is just the editor; the real deliverable is a human-readable `.txt` export (and a printed copy) meant to sit in a safe, readable with nothing but a text editor even if the app never runs again. See [README.md](README.md) for the full design philosophy and user-facing feature list.
+## Ground rules
 
-Constraints that shape design decisions here, per the README:
+- **README.md, docs, tests and code move together.** A behavior change updates the README, `CHANGELOG.md` and, if it touches a file, `docs/file-format.md`, in the same pull request. A README statement with no code behind it is a bug.
+- **Offline.** No network API anywhere in `SecretList.Core` or `SecretList.UI`: no `HttpClient`, no telemetry, no update checks (`RepositoryRulesTests`).
+- **Microsoft packages only**: `Microsoft.WindowsAppSDK`, `Microsoft.Windows.SDK.BuildTools`, `Microsoft.Windows.SDK.BuildTools.WinApp`, `MSTest`. Adding or upgrading any package needs the owner's "yes" first.
+- **The manifest asks only for `runFullTrust`.** The package name `C63ABE6F-95F6-41FC-A615-D59429F044E4` never changes (a new name means a new, empty data folder for every user). The publisher is exactly `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US` (`ReleaseRulesTests`).
+- **Data lives only in `ApplicationData.Current.LocalFolder`**: `records.txt` and `schema.md`. Never build a path under AppData yourself. Changing what the app stores, or where, needs the owner's "yes".
+- **The file formats are locked** by `docs/file-format.md` (format version 1) and `FileFormatTests`. A format change needs the owner's approval, a new spec version and a plan for files already on disk. Never change a known-answer test's expected values to make it pass.
+- **Bugs are fixed test-first**: commit a test that reproduces the bug, let CI show it failing, then fix.
+- **Never weaken, skip or delete a test** to make a change pass, including the rules tests.
+- **x64 only.** Fluent look: `MainPage.xaml` inherits theme resources. Don't add hardcoded colors or fonts. The one existing exception is `Foreground="White"` on the "…" status button.
+- **Mark AI-generated code**: a header naming Claude in each file Claude writes, an `AI-generated (Claude):` comment on lines Claude changes in files it didn't write, and `Co-Authored-By: Claude` on each commit.
+- Never commit secrets, signing files (`*.pfx`) or real records.
 
-- **Offline only** — no cloud, sync, telemetry, or AI-assisted data entry; everything is typed in by hand.
-- **No third-party NuGet packages** beyond what the official WinUI template provides.
-- **Human-readable storage** — both `records.txt` and `schema.md` (see below) must stay editable in Notepad with no app installed, and must keep working if hand-edited.
-- **Visual style is modern Fluent/Mica**, not the earlier green-screen terminal look — see "UI look" below. Don't reintroduce hardcoded black/green/Consolas styling in new XAML.
-- Passwords are never stored (see the `DIGITAL` category in [SecretList.UI/Assets/DefaultSchema.md](SecretList.UI/Assets/DefaultSchema.md)); `Notes` fields point to where a secret is kept instead.
+## Layout
 
-## Build & run
+| Path | What it is |
+|---|---|
+| `SecretList.Core/SecretList.Core.csproj` | Library, `net10.0`, no Windows dependencies, warnings are errors |
+| `SecretList.Core/Models/EntityDefinition.cs` | A category: `Category` (its name) and its ordered `Tags` |
+| `SecretList.Core/Models/TagDefinition.cs` | A field: `Name`, `Order` (1-based), `IsRequired` (unused) |
+| `SecretList.Core/Models/EntityRecord.cs` | A record: `Category`, `NickName`, `Values` (field name → value) |
+| `SecretList.Core/Services/SchemaFileStore.cs` | Reads `schema.md` (lenient parser, 12-field limit), seeds it from the packaged default, Import (`TryImport`), Export (`ExportDefaultSchema`), `Save` |
+| `SecretList.Core/Services/RecordFileStore.cs` | Reads and writes `records.txt` |
+| `SecretList.Core.Tests/` | MSTest 4.0.1: `SchemaFileStoreTests`, `RecordFileStoreTests`, `FileFormatTests` (known answers), `RepositoryRulesTests`, `ReleaseRulesTests`; `TestHelper.cs`, `MSTestSettings.cs` |
+| `SecretList.UI/SecretList.UI.csproj` | The WinUI 3 app, `net10.0-windows10.0.26100.0`, MSIX with the Windows App SDK included (`WindowsAppSDKSelfContained`) |
+| `SecretList.UI/Package.appxmanifest` | Package identity (name, publisher, version), `runFullTrust` |
+| `SecretList.UI/App.xaml(.cs)`, `MainWindow.xaml(.cs)` | App start-up; the window (Mica backdrop, title bar) hosting a `Frame` |
+| `SecretList.UI/MainPage.xaml(.cs)` | The only page: all UI logic (code-behind, no MVVM framework) |
+| `SecretList.UI/ViewModels/FieldRow.cs`, `RecordListItem.cs` | Plain display objects for a field row and a Find result |
+| `SecretList.UI/Services/PrintService.cs` | Printing: two records per A4 sheet |
+| `SecretList.UI/Services/DefaultSchemaLocation.cs` | Finds the packaged `Assets/DefaultSchema.md` (`Package.Current`) |
+| `SecretList.UI/Assets/DefaultSchema.md` | The default categories, shipped read-only in the package |
+| `SecretList.UI/Assets/*.png`, `AppIcon.ico` | Icons and tiles |
+| `SecretList.UI/Properties/launchSettings.json` | `SecretList (Package)` and `SecretList (Unpackaged)` profiles |
+| `docs/file-format.md` | The `schema.md` and `records.txt` formats (version 1) |
+| `Scripts/Test-Msix.ps1` | Checks a built MSIX: publisher, version, self-contained, `runFullTrust` only, contents (used by CI) |
+| `Scripts/Find-SecretListData.ps1` | Lists the user's SecretList data folders by package name; read-only |
+| `.github/workflows/build.yml` | CI on every pull request and push to `main`: tests, Release build, unsigned MSIX + `Test-Msix.ps1` |
+| `Directory.Build.props` | The version (`0.1.0`), shared by all projects |
+| `global.json` | Selects a .NET 10 SDK (10.0.100+, latest feature band) |
+| `SecretList.slnx` | The solution |
+| `CHANGELOG.md`, `PRIVACY.md`, `LICENSE` (MIT), `.gitignore` | |
 
-<!-- AI-generated (Claude): commands and layout updated for the SecretList.Core / SecretList.Core.Tests / SecretList.UI split. -->
-Layout: `SecretList.Core/` (models, `RecordFileStore`, `SchemaFileStore`; plain .NET, no Windows dependencies), `SecretList.Core.Tests/` (MSTest), `SecretList.UI/` (the WinUI app, MSIX). `SecretList.slnx` holds all three; `Directory.Build.props` holds the version; `global.json` selects a .NET 10 SDK. `.github/workflows/build.yml` runs on every pull request (tests, Windows build, unsigned MSIX checked by `Scripts/Test-Msix.ps1`). `RepositoryRulesTests` and `ReleaseRulesTests` enforce the repository and release rules; don't loosen them to make a change pass.
+## Build and test
 
 ```powershell
 dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj   # any OS, including Linux
-dotnet build SecretList.UI/SecretList.UI.csproj                  # Windows only; RID auto-resolves to win-<arch>
-dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only; registers a debug package identity (AUMID) and launches with it
+dotnet build SecretList.UI/SecretList.UI.csproj                  # Windows only
+dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only: registers a development package and launches it
 ```
 
-- Platform: `x64` only. <!-- AI-generated (Claude) -->
-- `dotnet run` works on this packaged WinUI app because of the `Microsoft.Windows.SDK.BuildTools.WinApp` package, which hooks the .NET CLI Run target. In Visual Studio, the two launch profiles are `SecretList (Package)` (MSIX) and `SecretList (Unpackaged)`.
-- **Important for debugging:** because the app launches via package identity (AUMID) rather than as a direct child process, `Console.WriteLine` output is invisible in the terminal you ran `dotnet run` from. Anything you need to see at runtime should go to a file temporarily (removed before merging) or be inspected with a debugger/DebugView. <!-- AI-generated (Claude): the print-debug.log example was removed. -->
+- `dotnet run` works because `Microsoft.Windows.SDK.BuildTools.WinApp` hooks the .NET CLI Run target to register a debug package identity. The app runs with package identity, so `Console.WriteLine` output isn't visible; use a debugger, or a temporary file removed before merging.
+- CI builds `SecretList.slnx` in Release and packages with `winapp pack SecretList.UI/SecretList.UI.csproj -c Release --arch x64 --no-sign -p SelfContained=true`.
 
-## Architecture
+## How to evaluate this repository
 
-The app is a single-page WinUI app. `App` → `MainWindow` (hosts a `Frame`) → navigates to `MainPage`, which contains essentially all logic.
+1. Run the tests: `dotnet test SecretList.Core.Tests/SecretList.Core.Tests.csproj`. Report passed, failed and skipped. On Windows, also build the UI project.
+2. Check every README statement against the code and a test, using the claims map below. Statements about the window have no automated test; check them in `MainPage.xaml(.cs)` and say they were checked by reading the code only.
+3. Check `docs/file-format.md` against `RecordFileStore` and `SchemaFileStore`, and its worked examples against `FileFormatTests` (`Spec_ShowsTheseWorkedExamplesWordForWord` does the second automatically).
+4. Check the rules: packages, network APIs, manifest capabilities, data folder (`RepositoryRulesTests`), and publisher, version, package name, pinned actions, x64 (`ReleaseRulesTests`).
+5. Report each finding as **statement** (quote it), **evidence** (file and line, or test and result), and **verdict** (true / false / not tested).
 
-**UI look.** `MainWindow.xaml` uses `MicaBackdrop` and a standard `TitleBar`; `App.xaml` merges the default `XamlControlsResources` (Fluent). `MainPage.xaml` has no hardcoded colors/fonts — everything inherits theme resources (`{StaticResource TitleTextBlockStyle}`, `{ThemeResource CardBackgroundFillColorDefaultBrush}`, etc.), so the app follows system light/dark mode automatically. There is no bottom "function key" hint bar anymore; keyboard shortcuts are discoverable via the on-screen nav/action buttons instead (see "Global key handling" below).
+## README claims map
 
-**Schema-driven records.** Three model concepts in [SecretList.Core/Models/](SecretList.Core/Models/):
+| README section | Code | Tests |
+|---|---|---|
+| What SecretList is, and isn't | `Assets/DefaultSchema.md` (no password field) | `SchemaFileStoreTests.ShippedDefaultSchema_HasSevenCategories_EachWithinTheTwelveTagLimit_AndNoPasswordField` |
+| Is it safe? (network, permission, packages) | all of `SecretList.Core`, `SecretList.UI`; `Package.appxmanifest`; `*.csproj` | `RepositoryRulesTests` (all four); `Scripts/Test-Msix.ps1` in CI |
+| What SecretList stores, and where | `MainPage.xaml.cs` `DataFilePath`, `SchemaFilePath` | `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`; publisher ID: not tested (computed from the publisher; matches the folder Windows created for the earlier `CN=AppPublisher` builds) |
+| Install (uninstall) | Windows behavior for MSIX packages | not tested |
+| Using SecretList: the screen, viewing and editing, Find, keyboard | `MainPage.xaml`, `MainPage.xaml.cs` (`ShowCurrentRecord`, `ToggleLock`, `CancelEdit`, `AddButton_Click`, `DeleteButton_Click`, `CategoryComboBox_SelectionChanged`, `RunSearch`, `NavigateToRecord`, `Page_KeyDown`, `ExitButton_Click`) | none (UI); checked by hand on Windows |
+| Printing | `PrintService.cs` (`BuildAllPages`, `BuildA4Sheet`, `BuildRecordHalf`, `OnPrintTaskRequested`) | none (UI); checked by hand on Windows |
+| Categories and fields (`schema.md`) | `SchemaFileStore.cs` (`Load`, `ParseLines`, `TryImport`, `ExportDefaultSchema`, `Save`); `MainPage.xaml.cs` (`UpdateImportButtonStatus`, `ImportSchemaMenuItem_Click`, `ExportSchemaMenuItem_Click`) | `SchemaFileStoreTests`; `FileFormatTests.SchemaFile_*` |
+| The default categories (table) | `Assets/DefaultSchema.md` | `SchemaFileStoreTests.ShippedDefaultSchema_HasExactlyTheCategoriesAndTagsTheReadmeLists` (also checks the README rows) |
+| The records file | `RecordFileStore.cs` | `RecordFileStoreTests`; `FileFormatTests.RecordsFile_*`, `Spec_ShowsTheseWorkedExamplesWordForWord` |
+| Building and testing | `global.json`, `*.csproj`, `.github/workflows/build.yml`, `Scripts/Test-Msix.ps1` | CI |
+| Releases | `Directory.Build.props`, `Package.appxmanifest`, `CHANGELOG.md` | `ReleaseRulesTests.ManifestVersion_IsTheProjectVersionPlusZero`, `ManifestPublisher_IsTheNameReleasesAreSignedAs` |
+| Known limitations | `RecordFileStore.Save` (values outside the schema, line breaks, in-place write), `RecordFileStore.Load` (first `.`, missing empty line), `MainPage.xaml.cs` (`CurrentTypeRecords`, no window-close handler), `PrintService.BuildAllPages` | none yet: each fix comes with a test that reproduces it first |
 
-- `EntityDefinition` — a category (e.g. `LEGAL`, `FINANCIAL`), stored in its `Category` property, and its ordered list of `TagDefinition` fields.
-- `TagDefinition` — one field within a category: `Name`, `Order`, `IsRequired`, and a computed `IsMultiline` (true only when `Name` is `"Notes"` or `"Address"`, case-insensitive — see "Multi-line fields" below).
-- `EntityRecord` — one saved entry: a nickname (`NickName`), a category (`Category`), and a `Dictionary<string,string>` of tag → value.
+## Known gaps
 
-**Schema is loaded from `schema.md`, not hardcoded.** [SecretList.Core/Services/SchemaFileStore.cs](SecretList.Core/Services/SchemaFileStore.cs) reads `ApplicationData.Current.LocalFolder\schema.md` on startup:
+- The data-loss bugs and other limitations listed in the README's "Known limitations" are not fixed yet.
+- No Backup or Restore. Uninstalling deletes the user's data.
+- No release workflow, signing or GitHub release yet; `ReleaseRulesTests` doesn't yet check `release.yml`, the signing subject or a dated `CHANGELOG.md` entry.
+- UI logic lives in `MainPage.xaml.cs`, not in `SecretList.Core`, so the window's behavior has no automated tests.
+- `Scripts/Find-SecretListData.ps1` is not run by CI.
+- The `SecretList (Unpackaged)` launch profile is untested; the app's storage is written for package identity.
+- `TagDefinition.IsRequired` is never set or used.
+- The tooltip on a red "…" button says `schema.md` "is missing or couldn't be read", but a missing `schema.md` is created from the default and shows green.
 
-```text
-# Category LEGAL
+## Code notes
 
-## TAG Name
-
-## TAG Organization
-...
-```
-
-`# Category NAME` starts a category; `## TAG TagName` adds a field to whichever category came before it, in the order written (that order becomes display order). If `schema.md` doesn't exist yet, it's seeded from the packaged, read-only `Assets/DefaultSchema.md` (resolved via `Package.Current.InstalledLocation`, with an `AppContext.BaseDirectory` fallback for unpackaged debug runs) and written out. If it exists but fails to parse into at least one category (e.g. a bad hand-edit), the same default is used in-memory without touching the file — a typo can't brick the app or blank out the schema. Day-to-day schema changes happen by hand-editing `schema.md` or via Import Schema, not by touching the packaged default. A record's `Values` may contain keys not in the current schema, and the schema drives which fields render — so editing the schema changes what an existing record displays without altering its stored data.
-
-**12-tag-per-category cap.** `SchemaFileStore.ParseLines` enforces a hard `MaxTagsPerCategory = 12` after building the parsed list: if *any* category ends up with more than 12 tags, the whole parse is discarded (`ParseLines` returns an empty list), which is exactly the same signal `Load()`/`TryImport()` already treat as "unparseable" — so a schema violating the cap gets the identical fallback-to-default-and-flag-red treatment as a genuinely broken file, with no partial acceptance (it doesn't truncate to the first 12 tags). This is a deliberate invariant the UI and print layout both rely on: `MainPage` never has to handle a category whose fields don't fit on screen, and `PrintService` never has to handle a record whose fields don't fit in a printed A5 half (see Print, below) — there's no scrolling logic and no per-record print overflow/continuation-page logic anywhere in the codebase, so if this cap is ever changed, check both of those assumptions.
-
-**Persistence.** [SecretList.Core/Services/RecordFileStore.cs](SecretList.Core/Services/RecordFileStore.cs) reads/writes a single plain-text file at `ApplicationData.Current.LocalFolder\records.txt` (per-user app-data, only meaningful when running with package identity). The custom line format is:
-
-```text
-:cat.<Category>
-:nick.<NickName>
-:tag.<TagName>.<value>      # blank line separates records
-```
-
-`Save` only writes tags present in the schema (in `Order`); `Load` splits `:tag.` on the *first* dot, so tag names must not contain `.` but values may. Note `Load` is written with inconsistent indentation vs. `Save` — that's cosmetic, not two implementations.
-
-Multi-line values (see below) still get one line per tag in the file: real newlines are encoded as a literal `\n` two-character sequence on save and decoded back on load. Known tradeoff: a value containing a literal backslash-`n` (e.g. some Windows paths) would be misread as a line break — acceptable for Address/Notes content, but worth remembering if this encoding is ever reused elsewhere.
-
-**Multi-line fields (Address/Notes).** `TagDefinition.IsMultiline` and its mirror `FieldRow.IsMultiline` ([SecretList.UI/ViewModels/FieldRow.cs](SecretList.UI/ViewModels/FieldRow.cs)) drive `FieldRowTemplateSelector` ([ViewModels/FieldRowTemplateSelector.cs](ViewModels/FieldRowTemplateSelector.cs)), which picks between two `DataTemplate`s defined in `MainPage.xaml`'s `Page.Resources`: `SingleLineFieldTemplate` (normal one-line `TextBox`) and `MultilineFieldTemplate` (`AcceptsReturn`, `TextWrapping="Wrap"`, `MinHeight="80"`, scrollable). The match is purely by tag name, not a schema.md setting — no new markdown syntax was needed for it.
-
-**UI state machine ([SecretList.UI/MainPage.xaml.cs](SecretList.UI/MainPage.xaml.cs)).** All interaction is keyboard-first (Tab-reachable throughout — no mouse required) with a modern Fluent look. Three integer/bool fields drive everything: `_currentTypeIndex`, `_currentRecordIndex`, `_isLocked`. `ShowCurrentRecord()` is the single render function — every navigation/edit handler mutates state then calls it. Records are filtered per-category on the fly via `CurrentTypeRecords` (a LINQ `.Where().ToList()`), so `_currentRecordIndex` indexes into that filtered list, not `_records`.
-
-**Locked vs. edit mode.** `_isLocked` toggles all TextBoxes between read-only and editable, and also toggles the Category picker and every nav button. `FieldRow` binds `IsReadOnly` and a mirrored `IsTabStop` (`!IsReadOnly`) so locked fields are skipped by Tab. The Lock button (labeled "Unlock" / "Lock & Save") and Enter both call `ToggleLock()`, which:
-- **Locking** (was unlocked): calls `SaveCurrentRecordEdits()`, then clears `_pendingNewRecord` and the edit snapshot (see Cancel, below).
-- **Unlocking** (was locked, about to edit an existing record): snapshots that record's `NickName`/`Values` into `_editSnapshotNickName`/`_editSnapshotValues` so Cancel can revert to them.
-
-**Cancel (button + Esc).** Backs out of whatever's currently unlocked without saving:
-- If `_pendingNewRecord` is set (i.e. you're mid **Add New**), it's removed from `_records` outright.
-- Otherwise, if there's an edit snapshot, the current record's `NickName`/`Values` are reverted to it.
-- Either way, ends by relocking and re-rendering. Guarded to no-op if already locked.
-
-**Reassigning Category while editing.** The Category `ComboBox` is only enabled while unlocked. `CategoryComboBox_SelectionChanged` updates the current record's `Category` and follows it to the new category's tab (`_currentTypeIndex`/`_currentRecordIndex` recomputed) so the record doesn't just vanish from the list you were viewing.
-
-**Global key handling & nav buttons.** `MainPage_Loaded` attaches a `KeyDown` handler to the window root with `handledEventsToo: true`. Bindings: `↑/↓` = prev/next record, `Home/End` = first/last record, `Ctrl+↑/↓` = prev/next category, `Ctrl+Home/End` = first/last category, `Ctrl+F` = Find, `Esc` = Cancel (only while unlocked). All of record/category navigation — keyboard *and* the on-screen First/Prev/Next/Last buttons for both Category and Record — is **disabled while `_isLocked` is false** (mid-edit), so you can't silently navigate away and lose unsaved changes; this also means Home/End behave as normal text-cursor keys while a field is focused for editing, instead of being hijacked for record navigation. While the Find overlay is open (`_searchOverlayVisible`), normal navigation keys are suppressed entirely.
-
-**On-screen layout.** Two toolbar rows above the field list: a Category row (label, `ComboBox`, First/Prev/Next/Last) and a Record row (First/Prev/Next/Last, Nickname, then Unlock/Add New/Cancel/Delete/Print). Tab order runs top-to-bottom through both rows before reaching the field list.
-
-**Find (Ctrl+F).** A modal-style overlay (`SearchOverlay` in [SecretList.UI/MainPage.xaml](SecretList.UI/MainPage.xaml), hidden by default) searches every record's `NickName` (case-insensitive substring match) regardless of the current category. Results populate a `ListView` bound to `RecordListItem` ([SecretList.UI/ViewModels/RecordListItem.cs](SecretList.UI/ViewModels/RecordListItem.cs)); selecting one via Enter or click calls `NavigateToRecord`, which finds the matching category index and record index and jumps there, closing the overlay.
-
-**Print.** [SecretList.UI/Services/PrintService.cs](SecretList.UI/Services/PrintService.cs) uses the WinUI `PrintManager`/`PrintDocument` APIs to print (or preview) the full record collection, plain black-on-white text regardless of the app's own theme. `MainPage` initializes it with the window handle (`hwnd`) on load and triggers it from the Print button.
-
-Pagination is built for an **A5-fold booklet**, not one page per category:
-- Page size is **A4 portrait** (`PageWidth`/`PageHeight` at 96 DPI), split into two equal halves (`HalfHeight`) separated by a thin fold-line `Rectangle`, with a small reserved `FoldGap` between them. Folding a printed sheet in half horizontally turns each half into an A5-sized page.
-- `BuildAllPages` flattens every category's records into one list, in schema order, then slices it two at a time (`i += 2`) into A4 sheets via `BuildA4Sheet` — a sheet is just "the next two records" in the flattened sequence, so **categories freely share a sheet**; there's no per-category page break. If the total record count is odd, the last sheet's bottom half is simply omitted (no blank placeholder record).
-- Each half's content comes from `BuildRecordHalf`, sized to `HalfHeight`. This is only safe because `SchemaFileStore` rejects any schema with more than 12 tags in a category (see above) — a single record's fields are guaranteed to fit in one half, so there's **no per-record overflow or continuation-page logic anywhere in `PrintService`**. If the tag cap is ever raised, this assumption needs to be revisited.
-- `OnPrintTaskRequested` requests `PrintMediaSize.IsoA4` and `PrintDuplex.TwoSidedShortEdge` on `printTask.Options` (short-edge flip matches a sheet meant to be folded horizontally). This is wrapped in try/catch and logged — not every printer driver exposes every option, and the print dialog still lets the user override paper size/duplex themselves regardless of what's requested.
-
-Two threading details worth knowing if this code is touched again:
-- `PrintDocument` is created **once**, in `Initialize()`, on the UI thread — not inside the `PrintTaskRequested` callback. That callback's `sourceRequested` delegate runs on a worker thread with no `DispatcherQueue`; constructing or touching a `PrintDocument` there throws `RPC_E_WRONG_THREAD` (`0x8001010E`).
-- The actual `sourceRequested.SetSource(...)` call is marshaled back onto the UI thread's `DispatcherQueue` (captured in `Initialize()`) via `TryEnqueue`, using a deferral (`GetDeferral()`/`Complete()`) so the print system waits for it.
-- `PrintService` writes no log file. <!-- AI-generated (Claude): the temporary print-debug.log logging was removed in 0.1.0. -->
-
-## Storage locations
-
-All at `ApplicationData.Current.LocalFolder` (i.e. `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState\` — find the exact folder with `Get-ChildItem "$env:LOCALAPPDATA\Packages" -Recurse -Filter records.txt`, since the debug package identity's folder name isn't a fixed, guessable string):
-
-- `records.txt` — the actual data (see Persistence, above).
-- `schema.md` — the schema (see Schema-driven records, above). Hand-editable; regenerated from `DefaultSchema.Create()` if missing or unparseable.
-
-## Conventions
-
-- Source files carry a header comment crediting AI assistance ("AI Disclaimer: ... under the direction and review of edwest19"). Preserve this style on files that already have it.
-- `ImplicitUsings` and nullable reference types are enabled.
-- UI logic lives in `MainPage.xaml.cs` code-behind, not an MVVM framework — the `ViewModels/` classes are plain display/state DTOs (plus one `DataTemplateSelector`), not `INotifyPropertyChanged` view models. `ShowCurrentRecord()` rebuilds `FieldsControl.ItemsSource` wholesale rather than mutating bound collections.
-- Don't reintroduce hardcoded `Background`/`Foreground`/`FontFamily` overrides in `MainPage.xaml` — the app deliberately moved off the earlier green-screen look to a theme-driven Fluent one; new XAML should keep inheriting theme resources instead of hardcoding colors/fonts.
-
-## Ignore
-
-Everything under `bin/` and `obj/` is build output (including generated `*.g.cs`, `*.g.i.cs`, and a large tree of Windows App SDK DLLs) — never edit these.
+- **UI state.** `MainPage` keeps `_currentTypeIndex` (category), `_currentRecordIndex` (index into `CurrentTypeRecords`, the current category's records in stored order) and `_isLocked`. Every handler changes state, then calls `ShowCurrentRecord()`, which rebuilds the field rows (`FieldsControl.ItemsSource`) and the buttons' enabled state.
+- **Editing.** Unlocking takes a snapshot of the record (`_editSnapshotNickName`, `_editSnapshotValues`) for Cancel. Add New sets `_pendingNewRecord`, which Cancel removes. Locking calls `SaveCurrentRecordEdits()`, which copies the boxes into the record and saves all records.
+- **Keys.** `Page_KeyDown` is attached both in `MainPage.xaml` and, in `MainPage_Loaded`, to the window's root with `handledEventsToo: true`. On the owner's PC (2026-11-08), ↓ moved one record and Enter on a focused Print button did not also unlock; change this only with a reproduced problem.
+- **The 12-field limit** lets the screen and the printed half-sheet assume a category's fields fit; there is no scrolling or print overflow handling. Revisit both if the limit changes.
+- **Printing threads.** `PrintDocument` is created once in `Initialize()` on the UI thread. The `PrintTaskRequested` callback's source delegate runs on a worker thread, so `SetSource` is marshaled back with the UI `DispatcherQueue` and a deferral. Creating or touching a `PrintDocument` on the worker thread throws `RPC_E_WRONG_THREAD` (`0x8001010E`).
+- **Build output.** Everything under `bin/` and `obj/` is generated; never edit it.
