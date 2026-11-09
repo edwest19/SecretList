@@ -49,7 +49,11 @@ public sealed class ReleaseRulesTests
     {
         // Windows keeps an MSIX app's data under its package name and publisher. A new name
         // would make an update a different app, with a new, empty data folder.
-        Assert.AreEqual("C63ABE6F-95F6-41FC-A615-D59429F044E4", (string?)ManifestIdentity().Attribute("Name"));
+        // Scripts/Find-SecretListData.ps1 finds the data folders by this name.
+        const string packageName = "C63ABE6F-95F6-41FC-A615-D59429F044E4";
+
+        Assert.AreEqual(packageName, (string?)ManifestIdentity().Attribute("Name"));
+        Assert.Contains($"$packageName = '{packageName}'", ReadRepoFile("Scripts", "Find-SecretListData.ps1"));
     }
 
     [TestMethod]

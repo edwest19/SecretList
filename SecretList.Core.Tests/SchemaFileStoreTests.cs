@@ -159,6 +159,32 @@ public sealed class SchemaFileStoreTests
     }
 
     [TestMethod]
+    public void ShippedDefaultSchema_HasExactlyTheCategoriesAndTagsTheReadmeLists()
+    {
+        var expected = new (string Category, string[] Tags)[]
+        {
+            ("LEGAL", ["Name", "Organization", "URL", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2", "Notes3"]),
+            ("FINANCIAL", ["Name", "AccountNumber", "RoutingNumber", "Advisor", "URL", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2"]),
+            ("MEDICAL", ["Name", "AccountNumber", "Organization", "URL", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2", "Notes3"]),
+            ("FAMILY", ["Name", "Relationship", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2", "Notes3"]),
+            ("DIGITAL", ["Name", "UserName", "URL", "Organization", "Email", "Notes1", "Notes2", "Notes3"]),
+            ("HOME", ["Name", "AccountNumber", "Organization", "URL", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2", "Notes3"]),
+            ("PETS", ["Name", "Breed", "Vet", "Organization", "AddressLine1", "AddressLine2", "AddressLine3", "Phone", "Email", "Notes1", "Notes2", "Notes3"]),
+        };
+        var readme = ReadRepoFile("README.md");
+
+        var schema = new SchemaFileStore(ShippedDefaultSchemaPath).Load(Path.Combine(NewTempFolder(), "schema.md"), out _);
+
+        Assert.HasCount(expected.Length, schema);
+        for (int i = 0; i < expected.Length; i++)
+        {
+            Assert.AreEqual(expected[i].Category, schema[i].Category);
+            CollectionAssert.AreEqual(expected[i].Tags, TagNames(schema[i]), expected[i].Category);
+            Assert.Contains($"| `{expected[i].Category}` | {expected[i].Tags.Length} | {string.Join(", ", expected[i].Tags)} |", readme);
+        }
+    }
+
+    [TestMethod]
     public void ShippedDefaultSchema_HasSevenCategories_EachWithinTheTwelveTagLimit_AndNoPasswordField()
     {
         var folder = NewTempFolder();

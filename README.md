@@ -1,177 +1,152 @@
 # SecretList
 
-## An offline, schema-driven personal reference manager for WinUI 3 / .NET
+> This project is AI-generated. To install, run or evaluate it, give this repository's link to an AI assistant and ask: "Evaluate this repository. Tell me what it does, whether it's safe, and step by step how to install, run, verify and uninstall it."
 
-Copyright (c) 2026 edwest19
+SecretList is a Windows desktop app (WinUI 3, .NET 10, packaged as MSIX, x64) for writing down, by hand, who someone should call and where they should look if you can't tell them yourself. It keeps everything in two plain-text files on your PC and prints it as a booklet for a safe.
 
----
+This README is the specification. Each statement in it is meant to be checkable against the code and the tests; [CLAUDE.md](CLAUDE.md) maps each section to them.
 
-## 🤖 AI Disclaimer
+## What SecretList is, and isn't
 
-This entire application — architecture, code, and this README — was generated with the assistance of **Claude** (Anthropic AI), under the direction and review of edwest19. Every design decision, class, and line of code was discussed, explained, and reviewed step by step in collaboration with Claude before being written. Nothing here was scanned, auto-generated without oversight, or produced without a human directing the process.
+- It is a personal reference document: "If the power is out, or I'm gone, and someone needs to know who to call or where to look — where do they find that?"
+- It is **not** an address book and **not** a password manager. The default categories have no password field; a `Notes` field can say *where* a secret is kept.
+- The app is only the editor. What matters is the result: a printed copy, and `records.txt`, which anyone can read in Notepad without the app.
+- Everything is typed in by hand. There is no import from other apps, no sync, and no AI-assisted entry.
 
-This project doubles as a portfolio demonstration: **"Have Claude, Will Travel"** — proof that a solo developer can direct an AI collaborator to build a complete, working, well-architected native Windows application.
+## Status
 
----
+**Not released yet.** Version 0.1.0 is in development. Before the first release, the data-loss bugs listed under [Known limitations](#known-limitations) are to be fixed and Backup added.
 
-## What This Is
+## Is it safe?
 
-SecretList is **not** an address book, and it's **not** a password manager. It's a personal, offline reference document meant to answer one question when it matters most:
+- **No network.** The app's code (`SecretList.Core`, `SecretList.UI`) uses no network API, makes no update checks and sends no telemetry. Checked by `RepositoryRulesTests.AppCodeHasNoNetworkAccess`.
+- **One permission.** The package asks Windows only for `runFullTrust`, which every packaged WinUI 3 desktop app needs. No internet, camera, location or AI permission. Checked by `RepositoryRulesTests.AppManifest_DeclaresOnlyRunFullTrust` and, on the built package, `Scripts/Test-Msix.ps1`.
+- **Microsoft packages only.** The only NuGet packages are `Microsoft.WindowsAppSDK`, `Microsoft.Windows.SDK.BuildTools`, `Microsoft.Windows.SDK.BuildTools.WinApp`, and `MSTest` for the tests. Checked by `RepositoryRulesTests.OnlyAllowedMicrosoftPackagesAreReferenced`.
+- **Your data stays on your PC**, in the two files described next. See also [PRIVACY.md](PRIVACY.md).
 
-> *"If the power is out, or I'm gone, and someone needs to know who to call or where to look — where do they find that?"*
+## What SecretList stores, and where
 
-The app itself is just the tool used to **build and maintain** that information. The real deliverable is:
+Two files, in the app's MSIX package data folder (`ApplicationData.Current.LocalFolder`):
 
-1. A plain, human-readable `.txt` export file
-2. A clean, printed paper copy
+```text
+%LOCALAPPDATA%\Packages\C63ABE6F-95F6-41FC-A615-D59429F044E4_<publisher ID>\LocalState\
+```
 
-Both are meant to be stored somewhere safe (like a home safe), alongside a copy of this app on a flash drive if desired — but the app does **not** need to run for the information to be useful. Anyone with the printout, or a text editor and the exported file, can read it.
+- `schema.md`: your categories and their fields.
+- `records.txt`: your records.
 
-## Design Philosophy
+`<publisher ID>` is computed by Windows from the package's publisher. For `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`, the publisher of this repository's builds, it is `tmnx6yaak54a8`. `Scripts/Find-SecretListData.ps1` lists every SecretList data folder for the current Windows user and offers to open them; it changes nothing.
 
-- **Offline only.** No cloud, no sync, no telemetry, no AI-assisted data entry. Everything is typed in by hand, deliberately, by one person.
-- **No third-party packages.** Built entirely on the .NET Base Class Library and the Windows App SDK (WinUI 3). No NuGet dependencies beyond what the official templates provide.
-- **Human-readable storage.** Both the data and the schema are stored as simple, tagged plain text — readable and editable in Notepad even without the app installed.
-- **Schema-driven, not hardcoded.** The information isn't a fixed "Contact" record — it's built from a small meta-model (categories and their tags), hand-editable in a plain-text schema file, inspired conceptually by IBM VM/CMS's `NAMES` file format.
-- **Modern, inviting look.** The UI uses standard Fluent design (Mica backdrop, system light/dark theming, native Windows controls) rather than a retro terminal skin — the goal is an app people actually want to open and use, not one that looks like a chore.
-- **Keyboard-first, mouse-optional.** Every field, button, and navigation action is reachable with Tab and Enter alone — useful for fast data entry, and for anyone who simply prefers not to use a mouse.
+The app opens no other files there. Checked by `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`. The exact formats are in [docs/file-format.md](docs/file-format.md).
 
-## Architecture
+**Uninstalling SecretList deletes this folder, including your records.** There is no Backup in the app yet, so copy `records.txt` and `schema.md` somewhere safe first.
 
-<!-- AI-generated (Claude): paths updated for the SecretList.Core / SecretList.Core.Tests / SecretList.UI split. -->
-The code is in three projects:
+## Install
 
-- **`SecretList.Core/`** — the models and the records and schema files. Plain .NET with no Windows dependencies.
-- **`SecretList.Core.Tests/`** — MSTest tests for `SecretList.Core`.
-- **`SecretList.UI/`** — the WinUI 3 app (the window), packaged as MSIX. It uses `SecretList.Core` for the files.
+There is no release to download yet. Until there is, build and run SecretList from source (see [Building and testing](#building-and-testing)); `dotnet run` registers a development copy of the package for your Windows user.
 
-### Data Model (`SecretList.Core/Models/`)
+- **Uninstall:** Settings → Apps, find SecretList, Uninstall. Or, in PowerShell, which removes every SecretList package for your Windows user:
 
-- **`TagDefinition`** — describes a single field: its name, display order, and whether it renders as a multi-line text box (see "Multi-line fields" below)
-- **`EntityDefinition`** — a named category (e.g. `LEGAL`, `FINANCIAL`) and its ordered list of tags
-- **`EntityRecord`** — one actual entry: a nickname (`NickName`), its category (`Category`), and a dictionary of tag → value pairs
+  ```powershell
+  Get-AppxPackage -Name C63ABE6F-95F6-41FC-A615-D59429F044E4 | Remove-AppxPackage
+  ```
 
-### Services (`SecretList.Core/Services/`, `SecretList.UI/Services/`)
+- **What uninstalling deletes:** the app and its data folder, including `records.txt` and `schema.md`.
 
-- **`RecordFileStore`** (Core) — reads and writes the entire record collection to/from a custom tagged-text format (see below), using only `System.IO`
-- **`SchemaFileStore`** (Core) — reads and writes the schema itself from a hand-editable markdown file, seeding a sensible default the first time the app runs (see "The Schema" below)
-- **`Assets/DefaultSchema.md`** (UI, found by `DefaultSchemaLocation`) — the starting/fallback set of categories and tags, shipped read-only in the package and used only to seed the schema file on first run or recover from a broken one <!-- AI-generated (Claude): there is no DefaultSchema class; the default is this packaged file. -->
-- **`PrintService`** (UI) — builds and shows a native Windows print preview/dialog for the full record collection, laid out for an A5 booklet (see "Printing" below)
+The download, the SHA-256 and signature checks, and the first-run steps are added here with the first release.
 
-### ViewModels (`SecretList.UI/ViewModels/`)
+## Using SecretList
 
-- **`FieldRow`** / **`RecordListItem`** — small display-only wrapper classes that keep UI-specific logic (like read-only state, or formatted list labels) out of the core data model
-- **`FieldRowTemplateSelector`** — picks between a single-line and a multi-line field layout per row, based on the tag
+### The screen
 
-### UI (`SecretList.UI/MainPage.xaml` / `SecretList.UI/MainWindow.xaml`)
+- A header showing the current category and "Record N of M" (or "No records yet").
+- **Category: First, Prev, Next, Last** to move between categories.
+- **Record: First, Prev, Next, Last**, the **Nickname** box, then **Unlock** (or **Lock & Save**), **Add New**, **Cancel**, **Delete**, **Print**, and **…** (Export Schema, Import Schema).
+- One labeled, one-line text box per field of the current category.
+- **Exit**, at the bottom left.
 
-- A single-page screen showing **one record at a time**, styled with standard Fluent controls and a Mica window backdrop
-- **Locked (browse) mode** by default — fields are read-only, and full keyboard/button navigation is always available
-- **Unlocked (edit) mode** — toggle with Enter or the Lock/Unlock button — fields become editable; locking again saves changes. Navigation is disabled while unlocked, so you can't accidentally wander off and lose an unsaved edit
-- **Cancel** (button or `Esc`) backs out of an edit or a not-yet-saved new record without saving anything
+### Viewing and editing
 
-## The Schema
+- Records open **locked**: the Nickname box and the field boxes are read-only, and Tab skips the field boxes.
+- **Unlock** (or Enter) makes the nickname and fields editable. While editing, every Category and Record navigation button and key is disabled, so you can't leave a record with unsaved changes by navigating; Home and End move the cursor in the box instead.
+- **Lock & Save** (or Enter) saves the record's nickname and fields and rewrites `records.txt`.
+- **Cancel** (or Esc) leaves editing without saving: a record made with Add New is removed; an existing record gets back its values from before Unlock.
+- While editing, a **Category** box appears. Choosing another category moves the record there, and the view follows it.
+- **Add New** adds a record to the current category, named `New<CATEGORY>` (for example `NewLEGAL`), opens it for editing, and selects the nickname.
+- **Delete** asks "Delete Record?" and, if you confirm, removes the record and rewrites `records.txt`. It can't be undone.
+- **Exit** closes the app. If you are editing, it first asks whether to discard the unsaved changes.
 
-The set of categories and their fields isn't hardcoded — it lives in a plain-text file, `schema.md`, stored alongside the record data. You can hand-edit it in any text editor, or use the **Import Schema** button in the app to load one from anywhere on disk (Desktop, Documents, a flash drive) without needing to find the app's data folder yourself.
+### Find (Ctrl+F)
 
-The Import button doubles as a status indicator:
+Ctrl+F opens "Find by Nickname". Type part of a nickname and press Enter: every record in every category whose nickname contains the text, ignoring case, is listed as `nickname (CATEGORY)`; an empty search lists every record. Enter or a click opens the selected record. Esc closes Find.
 
-- 🟢 **Green** — the active schema loaded successfully.
-- 🔴 **Red** — the schema file was missing or couldn't be read, so the app fell back to its built-in default categories.
+### Keyboard
 
-Format:
+| Key | Does |
+|---|---|
+| ↑ / ↓ | Previous / next record (not while editing) |
+| Home / End | First / last record (not while editing) |
+| Ctrl+↑ / Ctrl+↓ | Previous / next category (not while editing) |
+| Ctrl+Home / Ctrl+End | First category / last category and its last record (not while editing) |
+| Enter | Unlock, or Lock & Save |
+| Esc | Cancel (while editing) |
+| Ctrl+F | Find |
 
-```markdown
+### Printing
+
+**Print** opens the Windows print dialog with a preview of every record:
+
+- Records are printed in schema order (category by category), and within a category in the order they are stored.
+- Each A4 sheet holds two records, one per half, with a thin fold line between, so a folded sheet makes two A5 pages. Categories share sheets. If the number of records is odd, the bottom half of the last sheet is empty.
+- Each half shows the category, the nickname in bold, then every field of the category as `Field: value`, including empty ones, in black on white whatever the app's theme.
+- The app asks for A4 paper and two-sided printing flipped on the short edge. Printers that don't support those ignore them, and the print dialog lets you change both.
+
+## Categories and fields (`schema.md`)
+
+What the app shows is defined by `schema.md`, a Markdown file you can edit in Notepad:
+
+```text
 # Category LEGAL
 
 ## TAG Name
 
-## TAG Organization
+## TAG Phone
 ```
 
-Parsing is deliberately lenient about style — heading levels (`#`, `##`, `###`) and bullet-list tags (`- TAG Name`) both work, so a file written with a document title and proper markdown structure imports just as well as the simple form above. If the file is missing or fails to parse into anything usable, the app quietly falls back to its built-in default rather than crashing or showing an empty schema.
+- A `Category <name>` line starts a category; each `TAG <name>` line adds a field to it, in order. Heading marks (`#` to `######`) or a bullet (`-`, `*`) before them are optional, and case doesn't matter. Other lines are ignored. The full rules are in [docs/file-format.md](docs/file-format.md).
+- **At most 12 fields per category.** A file with a category of 13 or more fields, or with no category at all, is refused as a whole.
+- On first run, `schema.md` is created from the default below.
+- If `schema.md` is refused at startup, the app uses the default categories for that session and leaves the file as it is. The **…** button is **green** when `schema.md` was read, **red** when the default is being used instead.
+- **Export Schema** saves a copy of the default schema file anywhere you choose, to edit. **Import Schema** checks a `.md` or `.txt` file you pick: if it is valid it becomes `schema.md` (copied exactly) and the app shows its first category; if not, nothing changes and a message explains why. Import Schema is disabled while editing.
 
-**12-tag limit per category.** No category may have more than 12 tags. This isn't a soft guideline — a schema (whether it's the on-disk `schema.md` or a file picked via Import Schema) with any category exceeding 12 tags is rejected outright, exactly like an unparseable file: the app falls back to its built-in default, and (for an import) nothing is written to disk. The status button turns red, and a failure dialog explains why an import didn't take. The point of the cap is that every category's fields fit on screen with no scrolling, and every record's fields fit on a single printed A5 half (see Printing, below) — there's no per-record overflow/pagination handling, so this limit is a hard invariant the rest of the app relies on, not just a display preference.
+### The default categories
 
-**Default starting categories:**
+| Category | Fields | Field names, in order |
+|---|---|---|
+| `LEGAL` | 11 | Name, Organization, URL, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2, Notes3 |
+| `FINANCIAL` | 12 | Name, AccountNumber, RoutingNumber, Advisor, URL, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2 |
+| `MEDICAL` | 12 | Name, AccountNumber, Organization, URL, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2, Notes3 |
+| `FAMILY` | 10 | Name, Relationship, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2, Notes3 |
+| `DIGITAL` | 8 | Name, UserName, URL, Organization, Email, Notes1, Notes2, Notes3 |
+| `HOME` | 12 | Name, AccountNumber, Organization, URL, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2, Notes3 |
+| `PETS` | 12 | Name, Breed, Vet, Organization, AddressLine1, AddressLine2, AddressLine3, Phone, Email, Notes1, Notes2, Notes3 |
 
-| Category | Tags |
-| --- | --- |
-| **LEGAL** | Name, Organization, URL, Address, Phone, Email, Notes, UserName |
-| **FINANCIAL** | Name, AccountNumber, Organization, URL, Address, Phone, Email, Notes |
-| **MEDICAL** | Name, AccountNumber, Organization, URL, Address, Phone, Email, Notes |
-| **FAMILY** | Name, Relationship, Address, Phone, Email, Notes |
-| **DIGITAL** | Name, UserName, URL, Organization, Email, Notes |
-| **HOME** | Name, AccountNumber, Organization, URL, Address, Phone, Email, Notes |
+The default is `SecretList.UI/Assets/DefaultSchema.md`, shipped read-only inside the package.
 
-Note: **no password fields exist anywhere**, by design. The `Notes` field is meant for pointers ("see password manager, master key held by X") rather than actual credentials — this file is built to be found, so it should never contain secrets that matter.
-
-### Multi-line fields
-
-`Address` and `Notes` fields (matched by name, in any category) render as taller, wrapping text boxes that accept multiple lines, instead of a single-line field like everything else.
-
-## File Format
-
-Records are stored in a simple tagged-text format, one record per block, separated by blank lines:
+## The records file (`records.txt`)
 
 ```text
 :cat.LEGAL
-:nick.MyLawyer
+:nick.Lawyer
 :tag.Name.Jane Doe, Esq.
-:tag.Organization.
-:tag.Phone.631-555-0000
-:tag.Email.
-:tag.Address.
-:tag.Notes.Handles the estate
+:tag.Phone.631-555-0100
 
-:cat.FINANCIAL
-:nick.MyBank
-:tag.Name.First National Bank
-:tag.Organization.
-:tag.AccountNumber.AC-4471
-:tag.Phone.
-:tag.Address.
-:tag.Notes.
 ```
 
-Every tag is always written, even if empty — so the file's shape always matches the current schema, and nothing is silently missing. Multi-line `Address`/`Notes` values still occupy a single line in the file; real line breaks are encoded as a literal `\n` and decoded back automatically when the app reads the file.
+Each record is a `:cat.` line (its category), a `:nick.` line (its nickname), one `:tag.<field>.<value>` line per field of its category in schema order (empty fields included), and an empty line. The file is UTF-8 and is rewritten whole on every save. The exact rules, with a worked example locked by a known-answer test, are in [docs/file-format.md](docs/file-format.md).
 
-## Printing
+## Building and testing
 
-Printing is designed to produce a small, foldable booklet rather than a stack of full-size pages:
-
-- Pages are laid out as **A4, portrait**, with **two records per sheet** — one in the top half, one in the bottom half, separated by a thin fold line. Folding a printed sheet in half horizontally turns each half into an A5-sized page.
-- Records are placed two-per-sheet straight through the full record list, in category order — a sheet is simply "the next two records," so categories freely share a sheet rather than each starting its own page. If the total record count is odd, the very last sheet's bottom half is left blank.
-- **Duplex printing is requested by default** (both sides of the sheet, flipped on the short edge, matching the horizontal fold), along with A4 paper size. Whether these are actually honored depends on the printer/driver — the print dialog still lets you override paper size or duplex yourself if needed.
-- This layout only works because of the **12-tag-per-category limit** described above — a single record's fields are guaranteed to fit within one A5 half, so there's no per-record overflow or continuation-page logic.
-
-## Current Status
-
-**Working:**
-
-- Full CRUD (Create, Read, Update, Delete) for records
-- Persistent storage in the app's local AppData folder
-- Hand-editable, importable schema (`schema.md`) with a default fallback
-- Multi-line Address/Notes fields
-- Find by nickname (`Ctrl+F`)
-- Print (A4 sheets, two records per sheet for an A5-fold booklet, duplex requested by default, via the native Windows print dialog)
-- Full keyboard-first navigation, with matching on-screen buttons for everything (no mouse required)
-- Cancel/undo for in-progress edits and new, not-yet-saved records
-
-**Planned:**
-
-- Export to a user-chosen `.txt` file (today's persistence writes to the app's own AppData folder; a separate export-to-anywhere flow with a file picker isn't built yet)
-- In-app visual schema editor (today, schema changes happen via hand-editing or importing `schema.md`, not through app UI controls)
-
-## Requirements
-
-<!-- AI-generated (Claude): x64 only from 0.1.0; minimum version from Package.appxmanifest (MinVersion 10.0.17763.0). -->
-- To run: 64-bit (x64) Windows 10 version 1809 (build 17763) or later, or Windows 11
-- To build: Windows and the .NET 10 SDK (the Windows App SDK comes from NuGet during the build)
-
-## Building
-
-<!-- AI-generated (Claude): commands updated for the three-project layout. -->
 `global.json` selects a .NET 10 SDK (10.0.100 or a later feature band).
 
 - Run the tests (any OS, including Linux):
@@ -192,15 +167,51 @@ Printing is designed to produce a small, foldable booklet rather than a stack of
   dotnet run --project SecretList.UI/SecretList.UI.csproj
   ```
 
-<!-- AI-generated (Claude): continuous integration. -->
 Every pull request and every push to `main` runs `.github/workflows/build.yml` on `windows-latest`: the tests, a Release build of `SecretList.slnx`, and an unsigned x64 MSIX made with `winapp pack` and checked by `Scripts/Test-Msix.ps1` (publisher, version, no package dependencies, only `runFullTrust`, and the app, `SecretList.Core.dll` and the .NET runtime inside). Nothing in that workflow is signed or published.
 
-The tests include `RepositoryRulesTests` (Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder) and `ReleaseRulesTests` (publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file).
+The tests are:
 
-## License
+- `SchemaFileStoreTests` and `RecordFileStoreTests`: reading and writing the two files.
+- `FileFormatTests`: known-answer tests for both formats, which also check that the worked examples in `docs/file-format.md` match.
+- `RepositoryRulesTests`: Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder.
+- `ReleaseRulesTests`: publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file.
 
-Licensed under the [MIT License](LICENSE). Free software — use, modify, and
-distribute it for any purpose.
+The window itself (`SecretList.UI`) has no automated tests; it is checked by hand on Windows.
 
-See [PRIVACY.md](PRIVACY.md) for the privacy policy — the short version is
-that the app collects no information.
+## Releases
+
+None yet. The version is set in `Directory.Build.props` (`0.1.0`) and `SecretList.UI/Package.appxmanifest` (`0.1.0.0`), and changes are listed in [CHANGELOG.md](CHANGELOG.md). Releases will be MSIX packages signed as `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US` and published on this repository's Releases page by a release workflow; this section will then say how to verify them.
+
+## Known limitations
+
+These are to be fixed before the first release:
+
+- **Saving can erase data.** When `schema.md` is refused (the default is used) or after Import Schema with different categories or fields, the next Lock & Save or Delete removes from `records.txt` every value the current schema doesn't list, including all fields of records in categories it doesn't have.
+- **A field name containing a period (`.`) loses its value** after the next save.
+- **Line breaks in a value aren't stored safely.** Fields are one-line boxes, but `records.txt` has no encoding for a line break; one would cut the record short.
+- **A hand-edited `records.txt` missing the empty line between two records loses the first of them** when read.
+- **Records whose category isn't in the current schema are not shown and not printed.**
+- **No Backup or Restore.** Uninstalling deletes your data; copy the two files yourself.
+- **`records.txt` is overwritten in place.** A save interrupted by a crash or power loss can leave it incomplete.
+
+Also:
+
+- Closing the window with its **X** while editing discards the edit without asking (only **Exit** asks).
+- Value length isn't limited; a record with very long values may not fit on half a sheet when printed.
+- Two `Category` lines with the same name make two categories with that name.
+
+## Repository layout
+
+- `SecretList.Core/`: the models and the code for `schema.md` and `records.txt`. Plain .NET, no Windows dependencies.
+- `SecretList.Core.Tests/`: MSTest tests for `SecretList.Core`, plus the repository and release rules.
+- `SecretList.UI/`: the WinUI 3 app (the window and printing), packaged as MSIX.
+- `docs/file-format.md`: the file formats.
+- `Scripts/Test-Msix.ps1`: checks a built MSIX (used by CI). `Scripts/Find-SecretListData.ps1`: finds your data folders.
+- `.github/workflows/build.yml`: CI.
+- `Directory.Build.props` (version), `global.json` (.NET SDK), `SecretList.slnx`, `CHANGELOG.md`, `PRIVACY.md`, `LICENSE`.
+
+## About this project
+
+SecretList was written with Claude (Anthropic) under the direction and review of edwest19, as a demonstration that a solo developer can direct an AI collaborator to build a complete, working native Windows application ("Have Claude, Will Travel"). The design is inspired by the tagged `NAMES` files of IBM VM/CMS.
+
+Licensed under the MIT License; see [LICENSE](LICENSE).

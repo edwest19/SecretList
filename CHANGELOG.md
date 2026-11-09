@@ -13,6 +13,15 @@ Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released 
 - The package includes the Windows App SDK runtime (`WindowsAppSDKSelfContained`), now version 2.3.1 (was 2.2.0). Release builds are no longer trimmed.
 - Printing no longer writes `print-debug.log`, which recorded every record's category and nickname in the app's data folder.
 
+### Documentation
+- `README.md` is rewritten as the specification of the app as it is: what it stores and where, how to uninstall, every screen and key, printing, the schema rules and the exact default categories, building and testing, and the known limitations (including the data-loss bugs still to fix).
+- `docs/file-format.md` specifies `schema.md` and `records.txt` (format version 1), locked by the new known-answer tests in `FileFormatTests`.
+- `CLAUDE.md` is rewritten for AI assistants: ground rules, layout, build and test, how to evaluate the repository, a README claims map and the known gaps.
+
+### Scripts
+- `Scripts/Find-SecretListData.ps1` finds SecretList's data folders by its package name, and opening them in Explorer works (it no longer stores the results in PowerShell's automatic `$Matches` variable).
+- `Scripts/Copy-SecretList.ps1`, a personal copy-the-repository tool with fixed paths, is removed.
+
 ### Project
 - The code is split into three projects. `SecretList.Core` holds the models and the `records.txt` and `schema.md` code, and has no Windows dependencies. `SecretList.Core.Tests` holds MSTest tests for it. `SecretList.UI` is the WinUI app, which calls `SecretList.Core`. The app behaves the same as before.
 - The version is set once, in `Directory.Build.props` (0.1.0). `global.json` selects a .NET 10 SDK. `SecretList.slnx` holds the three projects.

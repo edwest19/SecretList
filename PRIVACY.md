@@ -14,7 +14,9 @@ computer.
 
 - **Your records** (`records.txt`) and **your schema** (`schema.md`) are
   stored only in this app's local Windows app-data folder on your own
-  machine (`ApplicationData.Current.LocalFolder`).
+  machine (`ApplicationData.Current.LocalFolder`). The app writes no other
+  files there. <!-- AI-generated (Claude): checked by RepositoryRulesTests. -->
+- Uninstalling SecretList deletes that folder, including your records.
 - Nothing is uploaded, synced, backed up, or transmitted anywhere by the
   app itself. If you choose to back up these files yourself (e.g. copying
   them to a flash drive, OneDrive, or another drive), that is a decision
@@ -41,7 +43,7 @@ not about what the software does with your data at runtime.)
 ## Third-party components
 
 SecretList uses no third-party libraries, SDKs, or NuGet packages beyond
-the standard .NET Base Class Library and the Windows App SDK. There are
+the standard .NET Base Class Library and the Windows App SDK. <!-- AI-generated (Claude): the full list is in README.md, "Is it safe?" --> There are
 no third-party analytics or advertising SDKs embedded in the app.
 
 ## Changes to this policy
