@@ -15,7 +15,7 @@ This README is the specification. Each statement in it is meant to be checkable 
 
 ## Status
 
-**Not released yet.** Version 0.1.0 is in development.
+Version 0.1.0. Signed releases are published on this repository's [Releases page](https://github.com/edwest19/SecretList/releases); see [Install](#install) and [Releases](#releases).
 
 ## Is it safe?
 
@@ -43,17 +43,31 @@ The app opens no other files there. When it replaces `records.txt` (every save) 
 
 ## Install
 
-There is no release to download yet. Until there is, build and run SecretList from source (see [Building and testing](#building-and-testing)); `dotnet run` registers a development copy of the package for your Windows user.
+1. Open the [latest release](https://github.com/edwest19/SecretList/releases/latest) and download `SecretList-<version>-x64.msix` and `SecretList-<version>-x64.msix.sha256`, into the same folder. (Pre-releases, `-rc.N`, are listed on the [Releases page](https://github.com/edwest19/SecretList/releases).)
+2. **Check the download.** In PowerShell, in that folder (with your version in place of `0.1.0`), this prints `True` when the file's SHA-256 matches the one published with it:
 
-- **Uninstall:** Settings → Apps, find SecretList, Uninstall. Or, in PowerShell, which removes every SecretList package for your Windows user:
+   ```powershell
+   $f = 'SecretList-0.1.0-x64.msix'; (Get-FileHash $f -Algorithm SHA256).Hash -eq ((Get-Content "$f.sha256") -split '  ')[0]
+   ```
 
-  ```powershell
-  Get-AppxPackage -Name C63ABE6F-95F6-41FC-A615-D59429F044E4 | Remove-AppxPackage
-  ```
+3. **Check the signature.** This prints `Valid` and `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`:
 
-- **What uninstalling deletes:** the app and its data folder, including `records.txt` and `schema.md`. Back up first; after installing again, **… → Restore...** brings them back.
+   ```powershell
+   $s = Get-AuthenticodeSignature 'SecretList-0.1.0-x64.msix'; $s.Status; $s.SignerCertificate.Subject
+   ```
 
-The download, the SHA-256 and signature checks, and the first-run steps are added here with the first release.
+4. **Install.** Open the `.msix` file. Windows shows the publisher, Edwin West, and installs SecretList for your Windows user. The package includes .NET and the Windows App SDK, so nothing else needs installing. It runs on 64-bit (x64) Windows 10 version 1809 or later, or Windows 11.
+5. **First run.** Start **SecretList** from the Start menu. It creates `schema.md` from the default categories and opens on `LEGAL` with "No records yet"; the **…** button is green.
+
+**Uninstall:** Settings → Apps, find SecretList, Uninstall. Or, in PowerShell, which removes every SecretList package for your Windows user:
+
+```powershell
+Get-AppxPackage -Name C63ABE6F-95F6-41FC-A615-D59429F044E4 | Remove-AppxPackage
+```
+
+**What uninstalling deletes:** the app and its data folder, including `records.txt` and `schema.md`. Use **… → Back Up...** first; after installing again, **… → Restore...** brings them back. Windows won't install a package over another with the same version, so moving from a pre-release to the release of the same version also means: Back Up, uninstall, install, Restore.
+
+**Building from source** instead: see [Building and testing](#building-and-testing); `dotnet run` registers a development copy of the package for your Windows user.
 
 ## Using SecretList
 
@@ -186,13 +200,49 @@ The tests are:
 - `BackupTests`: Back Up and Restore.
 - `FileFormatTests`: known-answer tests for both formats, which also check that the worked examples in `docs/file-format.md` match.
 - `RepositoryRulesTests`: Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder.
-- `ReleaseRulesTests`: publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file.
+- `ReleaseRulesTests`: signer (manifest and `release.yml`), version in `Directory.Build.props`, the manifest and `CHANGELOG.md`, unchanged package name, the signing subject (README, CLAUDE.md, `release.yml`), this README's release section, workflow actions pinned to commits, x64 only, solution file.
 
 The window itself (`SecretList.UI`) has no automated tests; it is checked by hand on Windows.
 
 ## Releases
 
-None yet. The version is set in `Directory.Build.props` (`0.1.0`) and `SecretList.UI/Package.appxmanifest` (`0.1.0.0`), and changes are listed in [CHANGELOG.md](CHANGELOG.md). Releases will be MSIX packages signed as `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US` and published on this repository's Releases page by a release workflow; this section will then say how to verify them.
+Releases are built, signed and published by `.github/workflows/release.yml`, only when a version tag is pushed. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
+1. Set the version in **three places**. `ReleaseRulesTests` fails if they disagree.
+   - `Directory.Build.props`: `X.Y.Z`
+   - `SecretList.UI/Package.appxmanifest`: `X.Y.Z.0`
+   - `CHANGELOG.md`: a heading `## [X.Y.Z] - YYYY-MM-DD`, whose text becomes the release notes
+2. Push a tag `vX.Y.Z`, or `vX.Y.Z-rc.N` for a pre-release.
+3. The workflow then:
+   - checks the tag against the version, the manifest and the changelog
+   - runs the tests
+   - packages the MSIX and checks it with `Scripts/Test-Msix.ps1`
+   - **waits for the owner's approval** in the GitHub environment `release`
+   - signs the MSIX with Azure Artifact Signing (account `edwest19`, profile `CodeSigning-Apps`, East US)
+   - checks that the signature is valid, timestamped and made by `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`
+   - publishes the GitHub Release with `SecretList-<version>-x64.msix` and its `.sha256`
+
+Signing uses OpenID Connect, so no password or key is stored in GitHub. Every action is pinned to an exact commit. The workflows turn off the .NET CLI's and winapp's usage telemetry. The release workflow and `Scripts/Test-Msix.ps1` are SecretLead's, with SecretList's names.
+
+The repository uses GitHub's **immutable OIDC subject claims** (**Settings → Actions → OIDC → Use immutable subject claim**), so the sign-in token names the repository by its numeric IDs as well as its name. The Azure app registration `SecretList-GitHubActions-Signing` trusts exactly this subject:
+
+`repo:edwest19@5809459/SecretList@1296666450:environment:release`
+
+- A different repository that later takes the name `edwest19/SecretList` can't match it.
+- Renaming this repository, its owner or the `release` environment changes the subject. The Azure federated credential must then be updated to match.
+
+### One-time setup
+
+What signing needs, done once by the owner:
+
+- **Azure:** the app registration `SecretList-GitHubActions-Signing`, with no certificate and no secret, and one federated credential:
+  - issuer `https://token.actions.githubusercontent.com`
+  - subject exactly the line above
+  - audience `api://AzureADTokenExchange`
+
+  The registration has the role **Artifact Signing Certificate Profile Signer** on the signing account `edwest19`.
+- **GitHub:** the environment `release`, which requires the owner as reviewer and accepts only tags beginning with `v`. It holds three secrets: `AZURE_CLIENT_ID` (the registration's application ID), `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`. They are identifiers, not passwords.
+- **GitHub:** **Use immutable subject claim**, as above.
 
 ## Known limitations
 
@@ -209,7 +259,7 @@ None yet. The version is set in `Directory.Build.props` (`0.1.0`) and `SecretLis
 - `SecretList.UI/`: the WinUI 3 app (the window and printing), packaged as MSIX.
 - `docs/file-format.md`: the file formats.
 - `Scripts/Test-Msix.ps1`: checks a built MSIX (used by CI). `Scripts/Find-SecretListData.ps1`: finds your data folders.
-- `.github/workflows/build.yml`: CI.
+- `.github/workflows/build.yml`: CI. `.github/workflows/release.yml`: signed releases.
 - `Directory.Build.props` (version), `global.json` (.NET SDK), `SecretList.slnx`, `CHANGELOG.md`, `PRIVACY.md`, `LICENSE`.
 
 ## About this project
