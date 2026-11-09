@@ -25,9 +25,9 @@ dotnet build SecretList.UI/SecretList.UI.csproj                  # Windows only;
 dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only; registers a debug package identity (AUMID) and launches with it
 ```
 
-- Platforms: `x86;x64;ARM64`.
+- Platform: `x64` only. <!-- AI-generated (Claude) -->
 - `dotnet run` works on this packaged WinUI app because of the `Microsoft.Windows.SDK.BuildTools.WinApp` package, which hooks the .NET CLI Run target. In Visual Studio, the two launch profiles are `SecretList (Package)` (MSIX) and `SecretList (Unpackaged)`.
-- **Important for debugging:** because the app launches via package identity (AUMID) rather than as a direct child process, `Console.WriteLine` output is invisible in the terminal you ran `dotnet run` from. Anything you need to see at runtime should go to a file instead (see `PrintService`'s `Log()` for the existing pattern) or be inspected with a debugger/DebugView.
+- **Important for debugging:** because the app launches via package identity (AUMID) rather than as a direct child process, `Console.WriteLine` output is invisible in the terminal you ran `dotnet run` from. Anything you need to see at runtime should go to a file temporarily (removed before merging) or be inspected with a debugger/DebugView. <!-- AI-generated (Claude): the print-debug.log example was removed. -->
 
 ## Architecture
 
@@ -100,7 +100,7 @@ Pagination is built for an **A5-fold booklet**, not one page per category:
 Two threading details worth knowing if this code is touched again:
 - `PrintDocument` is created **once**, in `Initialize()`, on the UI thread — not inside the `PrintTaskRequested` callback. That callback's `sourceRequested` delegate runs on a worker thread with no `DispatcherQueue`; constructing or touching a `PrintDocument` there throws `RPC_E_WRONG_THREAD` (`0x8001010E`).
 - The actual `sourceRequested.SetSource(...)` call is marshaled back onto the UI thread's `DispatcherQueue` (captured in `Initialize()`) via `TryEnqueue`, using a deferral (`GetDeferral()`/`Complete()`) so the print system waits for it.
-- `PrintService` currently has verbose file-based logging (`Log()`, writing to `ApplicationData.Current.LocalFolder\print-debug.log`, truncated on every `Initialize()`) left in from debugging the threading issue above. It's harmless to leave, but could be stripped once printing has stayed stable for a while.
+- `PrintService` writes no log file. <!-- AI-generated (Claude): the temporary print-debug.log logging was removed in 0.1.0. -->
 
 ## Storage locations
 
@@ -108,7 +108,6 @@ All at `ApplicationData.Current.LocalFolder` (i.e. `%LOCALAPPDATA%\Packages\<Pac
 
 - `records.txt` — the actual data (see Persistence, above).
 - `schema.md` — the schema (see Schema-driven records, above). Hand-editable; regenerated from `DefaultSchema.Create()` if missing or unparseable.
-- `print-debug.log` — temporary print-pipeline diagnostics (see Print, above).
 
 ## Conventions
 
