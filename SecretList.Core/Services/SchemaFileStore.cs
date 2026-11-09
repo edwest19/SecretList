@@ -126,6 +126,15 @@ public class SchemaFileStore
         return true;
     }
 
+    // AI-generated (Claude): checks a schema file with the same rules as Load and
+    // TryImport, without falling back to the default or writing anything. Used by
+    // Restore (BackupStore) to check a backup's schema.md before using it.
+    public bool TryRead(string filePath, out List<EntityDefinition> schema)
+    {
+        schema = ParseLines(File.ReadAllLines(filePath));
+        return schema.Count > 0;
+    }
+
     // Copies the packaged, read-only Assets/DefaultSchema.md to a location
     // the user chooses (Desktop, Documents, a flash drive), for the Export
     // Schema menu item. Copied byte-for-byte, preserving whatever comments

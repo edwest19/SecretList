@@ -6,8 +6,8 @@
 
 | File | What it is | Read by | Written by |
 |---|---|---|---|
-| `schema.md` | The categories and, for each, its tags (fields), in order | `SchemaFileStore.Load` at startup | `SchemaFileStore.Save` once, to create it from the packaged default; Import Schema replaces it with a byte-for-byte copy of the picked file (`SchemaFileStore.TryImport`) |
-| `records.txt` | The records | `RecordFileStore.Load` at startup | `RecordFileStore.Save`, replacing the whole file on every Lock & Save and every Delete (through `records.txt.tmp`; see Writing) |
+| `schema.md` | The categories and, for each, its tags (fields), in order | `SchemaFileStore.Load` at startup | `SchemaFileStore.Save` once, to create it from the packaged default; Import Schema replaces it with a byte-for-byte copy of the picked file (`SchemaFileStore.TryImport`); Restore replaces it with the backup's copy (`BackupStore.TryRestore`) |
+| `records.txt` | The records | `RecordFileStore.Load` at startup | `RecordFileStore.Save`, replacing the whole file on every Lock & Save and every Delete (through `records.txt.tmp`; see Writing); Restore replaces it with the backup's copy |
 
 Both formats are locked by the known-answer tests in `SecretList.Core.Tests/FileFormatTests.cs`. **Changing either format needs the owner's approval**, a new version of this document, and a plan for files already on disk. Never change a known-answer test's expected values to make it pass.
 
@@ -182,6 +182,19 @@ With a schema whose `LEGAL` category has the tags `Name` and `Phone`, a LEGAL re
 ```
 
 `Name` and `Phone` come from the schema, in schema order; `Executor` and `Zip` are kept after them in name order; the empty `Fax` is left out.
+
+## Backups
+
+**Back Up** (`BackupStore.Backup`) creates a folder named `SecretList backup <yyyy-MM-dd HHmmss>` (local time, invariant digits; ` (2)`, ` (3)`… appended if the name exists) inside the folder the user picks, and copies into it, byte for byte:
+
+| File in the backup folder | Copied from |
+|---|---|
+| `schema.md` | `schema.md` |
+| `records.txt` | `records.txt`, or an empty file if there is none yet (an empty `records.txt` means no records) |
+
+**Restore** (`BackupStore.TryRestore`) reads a backup folder chosen by the user. It refuses, changing nothing, if the folder lacks either file, or if its `schema.md` would be refused by the `schema.md` reading rules above. Otherwise it reads both files, then writes `schema.md` and then `records.txt` into the data folder byte for byte, each through `<name>.tmp` as described for `records.txt` under Writing (`SafeFile`). The backup's `records.txt` is not checked beyond existing: any text reads by the rules above.
+
+Locked by `BackupTests`.
 
 ## Known limitations of format version 1
 

@@ -6,6 +6,9 @@ Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released 
 
 ## [Unreleased]
 
+### Added
+- **Back Up and Restore**, in the "…" menu. Back Up copies `records.txt` and `schema.md` into a new `SecretList backup <date> <time>` folder inside a folder you pick, so your data survives uninstalling. Restore replaces both files with a backup's copies after you confirm, refusing (and changing nothing) unless the backup has both files and a valid `schema.md`. Both are disabled while editing.
+
 ### Fixed
 - **Saving no longer erases data.** `records.txt` keeps every value the current schema doesn't list: fields removed from a category, and all fields of records whose category isn't in the schema. They are written after the schema's fields, by name; empty ones are left out. Before, a schema change (or a typo in `schema.md`, which makes the app fall back to the default) followed by any save or delete removed them.
 - **A field name containing a period is refused.** `schema.md`, or a file chosen for Import Schema, with a tag name containing `.` is refused like any invalid schema. Before, such a field's value was read back under the wrong name and lost on the next save.

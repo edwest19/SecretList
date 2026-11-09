@@ -15,7 +15,7 @@ This README is the specification. Each statement in it is meant to be checkable 
 
 ## Status
 
-**Not released yet.** Version 0.1.0 is in development. Backup is to be added before the first release (see [Known limitations](#known-limitations)).
+**Not released yet.** Version 0.1.0 is in development.
 
 ## Is it safe?
 
@@ -37,9 +37,9 @@ Two files, in the app's MSIX package data folder (`ApplicationData.Current.Local
 
 `<publisher ID>` is computed by Windows from the package's publisher. For `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`, the publisher of this repository's builds, it is `tmnx6yaak54a8`. `Scripts/Find-SecretListData.ps1` lists every SecretList data folder for the current Windows user and offers to open them; it changes nothing.
 
-The app opens no other files there, except that each save of `records.txt` is first written to `records.txt.tmp` in the same folder and then swapped in, so an interrupted save leaves the previous `records.txt` intact. Checked by `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder` and `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile`. The exact formats are in [docs/file-format.md](docs/file-format.md).
+The app opens no other files there. When it replaces `records.txt` (every save) or `schema.md` (Restore), it first writes the new contents to the same name plus `.tmp` in the same folder and then swaps it in, so an interrupted write leaves the previous file intact. Checked by `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`, `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile` and `BackupTests.Restore_ReplacesBothFilesByteForByte_AndLeavesNoTemporaryFile`.
 
-**Uninstalling SecretList deletes this folder, including your records.** There is no Backup in the app yet, so copy `records.txt` and `schema.md` somewhere safe first.
+**Uninstalling SecretList deletes this folder, including your records.** Use **… → Back Up...** first (see [Backup and Restore](#backup-and-restore)).
 
 ## Install
 
@@ -51,7 +51,7 @@ There is no release to download yet. Until there is, build and run SecretList fr
   Get-AppxPackage -Name C63ABE6F-95F6-41FC-A615-D59429F044E4 | Remove-AppxPackage
   ```
 
-- **What uninstalling deletes:** the app and its data folder, including `records.txt` and `schema.md`.
+- **What uninstalling deletes:** the app and its data folder, including `records.txt` and `schema.md`. Back up first; after installing again, **… → Restore...** brings them back.
 
 The download, the SHA-256 and signature checks, and the first-run steps are added here with the first release.
 
@@ -61,7 +61,7 @@ The download, the SHA-256 and signature checks, and the first-run steps are adde
 
 - A header showing the current category and "Record N of M" (or "No records yet").
 - **Category: First, Prev, Next, Last** to move between categories.
-- **Record: First, Prev, Next, Last**, the **Nickname** box, then **Unlock** (or **Lock & Save**), **Add New**, **Cancel**, **Delete**, **Print**, and **…** (Export Schema, Import Schema).
+- **Record: First, Prev, Next, Last**, the **Nickname** box, then **Unlock** (or **Lock & Save**), **Add New**, **Cancel**, **Delete**, **Print**, and **…** (Export Schema, Import Schema, Back Up..., Restore...).
 - One labeled, one-line text box per field of the current category.
 - **Exit**, at the bottom left.
 
@@ -100,6 +100,16 @@ Ctrl+F opens "Find by Nickname". Type part of a nickname and press Enter: every 
 - Each A4 sheet holds two records, one per half, with a thin fold line between, so a folded sheet makes two A5 pages. Categories share sheets. If the number of records is odd, the bottom half of the last sheet is empty.
 - Each half shows the category in gray, the nickname in bold, then each field **that has a value** as `Field: value` in black: the schema's fields in schema order, then any values the schema doesn't list (left from an earlier schema), by field name. Empty fields aren't printed. The page is white whatever the app's theme.
 - The app asks for A4 paper and two-sided printing flipped on the short edge. Printers that don't support those ignore them, and the print dialog lets you change both.
+
+## Backup and Restore
+
+Both are in the **…** menu, and both are disabled while you are editing.
+
+- **Back Up...** asks for a folder and creates a new folder inside it named `SecretList backup <yyyy-MM-dd HHmmss>` (your local date and time; ` (2)`, ` (3)`… is added if that name is taken). It copies `records.txt` and `schema.md` into it exactly as they are; if no record has been saved yet, `records.txt` is an empty file. A message shows where the backup went. Earlier backups are never overwritten.
+- **Restore...** asks for a backup folder, then asks "Restore From Backup?". If you confirm, it replaces your `records.txt` and `schema.md` with exact copies of the backup's and shows the first category. It refuses, changing nothing and saying why, unless the folder contains both files and its `schema.md` passes the same checks as Import Schema. A restore can't be undone, so back up first if you want to keep what you have.
+- A backup folder holds the same two plain-text files the app uses, so you can also read it in Notepad or copy the files back into the data folder by hand.
+
+Checked by `BackupTests`.
 
 ## Categories and fields (`schema.md`)
 
@@ -173,6 +183,7 @@ The tests are:
 
 - `SchemaFileStoreTests` and `RecordFileStoreTests`: reading and writing the two files.
 - `DataLossTests`: the fixed data-loss bugs (values outside the schema, a period in a field name, line breaks, replacing the file) and what is printed.
+- `BackupTests`: Back Up and Restore.
 - `FileFormatTests`: known-answer tests for both formats, which also check that the worked examples in `docs/file-format.md` match.
 - `RepositoryRulesTests`: Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder.
 - `ReleaseRulesTests`: publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file.
@@ -184,12 +195,6 @@ The window itself (`SecretList.UI`) has no automated tests; it is checked by han
 None yet. The version is set in `Directory.Build.props` (`0.1.0`) and `SecretList.UI/Package.appxmanifest` (`0.1.0.0`), and changes are listed in [CHANGELOG.md](CHANGELOG.md). Releases will be MSIX packages signed as `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US` and published on this repository's Releases page by a release workflow; this section will then say how to verify them.
 
 ## Known limitations
-
-To be fixed before the first release:
-
-- **No Backup or Restore.** Uninstalling deletes your data; copy the two files yourself.
-
-Also:
 
 - **Records whose category isn't in the current schema are not shown on screen.** They are kept and printed; add the category to `schema.md` to see and edit them.
 - **A hand-edited `records.txt` missing the empty line between two records loses the first of them** when read. Files the app writes always have it.

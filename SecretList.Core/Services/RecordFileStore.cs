@@ -41,33 +41,13 @@ public class RecordFileStore
             sb.AppendLine();
         }
 
-        WriteReplacing(filePath, sb.ToString()); // AI-generated (Claude): was File.WriteAllText(filePath, ...)
+        SafeFile.WriteAllText(filePath, sb.ToString()); // AI-generated (Claude): was File.WriteAllText(filePath, ...); see SafeFile
     }
 
     // AI-generated (Claude): records.txt has one line per tag, so a line break inside a
     // value would cut the record short when read. Each one becomes a single space.
     private static string OneLine(string value) => LineBreak.Replace(value, " ");
 
-    // AI-generated (Claude): writes the new contents to "<file>.tmp" beside the file,
-    // flushes them to disk, then swaps it in for the old file (File.Replace), or renames
-    // it when there is no old file yet. A save interrupted before the swap leaves the old
-    // file as it was. UTF-8 without a byte-order mark, as File.WriteAllText wrote before.
-    private static void WriteReplacing(string filePath, string text)
-    {
-        string tempPath = filePath + ".tmp";
-        byte[] bytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(text);
-
-        using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            stream.Write(bytes);
-            stream.Flush(flushToDisk: true);
-        }
-
-        if (File.Exists(filePath))
-            File.Replace(tempPath, filePath, destinationBackupFileName: null);
-        else
-            File.Move(tempPath, filePath);
-    }
     public List<EntityRecord> Load(string filePath)
 {
     var records = new List<EntityRecord>();

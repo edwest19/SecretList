@@ -17,11 +17,10 @@ computer.
   machine (`ApplicationData.Current.LocalFolder`). The app writes no other
   files there. <!-- AI-generated (Claude): checked by RepositoryRulesTests. -->
 - Uninstalling SecretList deletes that folder, including your records.
-- Nothing is uploaded, synced, backed up, or transmitted anywhere by the
-  app itself. If you choose to back up these files yourself (e.g. copying
-  them to a flash drive, OneDrive, or another drive), that is a decision
-  you make outside the app, using tools of your own choosing — not
-  something SecretList does on your behalf.
+- Nothing is uploaded, synced, or transmitted anywhere by the app itself.
+  Back Up copies the two files only to a folder you pick yourself, and only
+  when you ask. If that folder is on a flash drive, OneDrive, or another
+  drive, that is your choice. <!-- AI-generated (Claude): updated when Back Up and Restore were added. -->
 - The app does not require, request, or use an internet connection at any
   point during normal operation.
 
