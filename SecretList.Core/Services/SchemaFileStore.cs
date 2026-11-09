@@ -212,6 +212,12 @@ public class SchemaFileStore
         if (schema.Any(e => e.Tags.Count > MaxTagsPerCategory))
             return new List<EntityDefinition>();
 
+        // AI-generated (Claude): a tag name containing "." is refused the same way, because
+        // records.txt splits a ":tag." line at its first "." - such a tag's value would be
+        // read back under the wrong name and then lost.
+        if (schema.Any(e => e.Tags.Any(t => t.Name.Contains('.'))))
+            return new List<EntityDefinition>();
+
         return schema;
     }
 

@@ -27,14 +27,16 @@ SecretList is a WinUI 3 / .NET 10 desktop app, packaged as MSIX (x64), for keepi
 | `SecretList.Core/Models/TagDefinition.cs` | A field: `Name`, `Order` (1-based), `IsRequired` (unused) |
 | `SecretList.Core/Models/EntityRecord.cs` | A record: `Category`, `NickName`, `Values` (field name → value) |
 | `SecretList.Core/Services/SchemaFileStore.cs` | Reads `schema.md` (lenient parser, 12-field limit), seeds it from the packaged default, Import (`TryImport`), Export (`ExportDefaultSchema`), `Save` |
-| `SecretList.Core/Services/RecordFileStore.cs` | Reads and writes `records.txt` |
-| `SecretList.Core.Tests/` | MSTest 4.0.1: `SchemaFileStoreTests`, `RecordFileStoreTests`, `FileFormatTests` (known answers), `RepositoryRulesTests`, `ReleaseRulesTests`; `TestHelper.cs`, `MSTestSettings.cs` |
+| `SecretList.Core/Services/RecordFileStore.cs` | Reads and writes `records.txt` (keeps values outside the schema, line breaks → spaces, writes through `records.txt.tmp`) |
+| `SecretList.Core/Services/RecordValues.cs` | `OutsideSchema`: a record's non-empty values whose tag the schema doesn't list, by name |
+| `SecretList.Core/Services/PrintContent.cs` | Which records are printed, in what order, with which fields (`PrintedRecord`, `PrintedField`) |
+| `SecretList.Core.Tests/` | MSTest 4.0.1: `SchemaFileStoreTests`, `RecordFileStoreTests`, `FileFormatTests` (known answers), `DataLossTests`, `RepositoryRulesTests`, `ReleaseRulesTests`; `TestHelper.cs`, `MSTestSettings.cs` |
 | `SecretList.UI/SecretList.UI.csproj` | The WinUI 3 app, `net10.0-windows10.0.26100.0`, MSIX with the Windows App SDK included (`WindowsAppSDKSelfContained`) |
 | `SecretList.UI/Package.appxmanifest` | Package identity (name, publisher, version), `runFullTrust` |
 | `SecretList.UI/App.xaml(.cs)`, `MainWindow.xaml(.cs)` | App start-up; the window (Mica backdrop, title bar) hosting a `Frame` |
 | `SecretList.UI/MainPage.xaml(.cs)` | The only page: all UI logic (code-behind, no MVVM framework) |
 | `SecretList.UI/ViewModels/FieldRow.cs`, `RecordListItem.cs` | Plain display objects for a field row and a Find result |
-| `SecretList.UI/Services/PrintService.cs` | Printing: two records per A4 sheet |
+| `SecretList.UI/Services/PrintService.cs` | Printing: lays out `PrintContent`'s records, two per A4 sheet |
 | `SecretList.UI/Services/DefaultSchemaLocation.cs` | Finds the packaged `Assets/DefaultSchema.md` (`Package.Current`) |
 | `SecretList.UI/Assets/DefaultSchema.md` | The default categories, shipped read-only in the package |
 | `SecretList.UI/Assets/*.png`, `AppIcon.ico` | Icons and tiles |
@@ -73,20 +75,20 @@ dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only:
 |---|---|---|
 | What SecretList is, and isn't | `Assets/DefaultSchema.md` (no password field) | `SchemaFileStoreTests.ShippedDefaultSchema_HasSevenCategories_EachWithinTheTwelveTagLimit_AndNoPasswordField` |
 | Is it safe? (network, permission, packages) | all of `SecretList.Core`, `SecretList.UI`; `Package.appxmanifest`; `*.csproj` | `RepositoryRulesTests` (all four); `Scripts/Test-Msix.ps1` in CI |
-| What SecretList stores, and where | `MainPage.xaml.cs` `DataFilePath`, `SchemaFilePath` | `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`; publisher ID: not tested (computed from the publisher; matches the folder Windows created for the earlier `CN=AppPublisher` builds) |
+| What SecretList stores, and where | `MainPage.xaml.cs` `DataFilePath`, `SchemaFilePath`; `RecordFileStore.WriteReplacing` | `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`; `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile`; publisher ID: not tested (computed from the publisher; matches the folder Windows created for the earlier `CN=AppPublisher` builds) |
 | Install (uninstall) | Windows behavior for MSIX packages | not tested |
 | Using SecretList: the screen, viewing and editing, Find, keyboard | `MainPage.xaml`, `MainPage.xaml.cs` (`ShowCurrentRecord`, `ToggleLock`, `CancelEdit`, `AddButton_Click`, `DeleteButton_Click`, `CategoryComboBox_SelectionChanged`, `RunSearch`, `NavigateToRecord`, `Page_KeyDown`, `ExitButton_Click`) | none (UI); checked by hand on Windows |
-| Printing | `PrintService.cs` (`BuildAllPages`, `BuildA4Sheet`, `BuildRecordHalf`, `OnPrintTaskRequested`) | none (UI); checked by hand on Windows |
-| Categories and fields (`schema.md`) | `SchemaFileStore.cs` (`Load`, `ParseLines`, `TryImport`, `ExportDefaultSchema`, `Save`); `MainPage.xaml.cs` (`UpdateImportButtonStatus`, `ImportSchemaMenuItem_Click`, `ExportSchemaMenuItem_Click`) | `SchemaFileStoreTests`; `FileFormatTests.SchemaFile_*` |
+| Printing | `PrintContent.cs` (what and in what order); `PrintService.cs` (`BuildAllPages`, `BuildA4Sheet`, `BuildRecordHalf`, `OnPrintTaskRequested`: layout, paper, duplex) | `DataLossTests.Print_*`; the layout is checked by hand on Windows |
+| Categories and fields (`schema.md`) | `SchemaFileStore.cs` (`Load`, `ParseLines`, `TryImport`, `ExportDefaultSchema`, `Save`); `MainPage.xaml.cs` (`UpdateImportButtonStatus`, `ImportSchemaMenuItem_Click`, `ExportSchemaMenuItem_Click`) | `SchemaFileStoreTests`; `FileFormatTests.SchemaFile_*`; `DataLossTests.Load_SchemaWithATagNameContainingAPeriod_*`, `TryImport_SchemaWithATagNameContainingAPeriod_*` |
 | The default categories (table) | `Assets/DefaultSchema.md` | `SchemaFileStoreTests.ShippedDefaultSchema_HasExactlyTheCategoriesAndTagsTheReadmeLists` (also checks the README rows) |
-| The records file | `RecordFileStore.cs` | `RecordFileStoreTests`; `FileFormatTests.RecordsFile_*`, `Spec_ShowsTheseWorkedExamplesWordForWord` |
+| The records file | `RecordFileStore.cs`, `RecordValues.cs` | `RecordFileStoreTests`; `FileFormatTests.RecordsFile_*`, `Spec_ShowsTheseWorkedExamplesWordForWord`; `DataLossTests.Save_*` |
 | Building and testing | `global.json`, `*.csproj`, `.github/workflows/build.yml`, `Scripts/Test-Msix.ps1` | CI |
 | Releases | `Directory.Build.props`, `Package.appxmanifest`, `CHANGELOG.md` | `ReleaseRulesTests.ManifestVersion_IsTheProjectVersionPlusZero`, `ManifestPublisher_IsTheNameReleasesAreSignedAs` |
-| Known limitations | `RecordFileStore.Save` (values outside the schema, line breaks, in-place write), `RecordFileStore.Load` (first `.`, missing empty line), `MainPage.xaml.cs` (`CurrentTypeRecords`, no window-close handler), `PrintService.BuildAllPages` | none yet: each fix comes with a test that reproduces it first |
+| Known limitations | No Backup; `MainPage.xaml.cs` (`CurrentTypeRecords` shows schema categories only; no window-close handler); `RecordFileStore.Load` (missing empty line); `PrintService.BuildRecordHalf` (no overflow handling); `SchemaFileStore.ParseLines` (repeated category names) | none: each fix comes with a test that reproduces it first |
 
 ## Known gaps
 
-- The data-loss bugs and other limitations listed in the README's "Known limitations" are not fixed yet.
+- The limitations listed in the README's "Known limitations" are not fixed.
 - No Backup or Restore. Uninstalling deletes the user's data.
 - No release workflow, signing or GitHub release yet; `ReleaseRulesTests` doesn't yet check `release.yml`, the signing subject or a dated `CHANGELOG.md` entry.
 - UI logic lives in `MainPage.xaml.cs`, not in `SecretList.Core`, so the window's behavior has no automated tests.
@@ -101,5 +103,6 @@ dotnet run --project SecretList.UI/SecretList.UI.csproj          # Windows only:
 - **Editing.** Unlocking takes a snapshot of the record (`_editSnapshotNickName`, `_editSnapshotValues`) for Cancel. Add New sets `_pendingNewRecord`, which Cancel removes. Locking calls `SaveCurrentRecordEdits()`, which copies the boxes into the record and saves all records.
 - **Keys.** `Page_KeyDown` is attached both in `MainPage.xaml` and, in `MainPage_Loaded`, to the window's root with `handledEventsToo: true`. On the owner's PC (2026-11-08), ↓ moved one record and Enter on a focused Print button did not also unlock; change this only with a reproduced problem.
 - **The 12-field limit** lets the screen and the printed half-sheet assume a category's fields fit; there is no scrolling or print overflow handling. Revisit both if the limit changes.
+- **Printing.** `PrintContent.Build` (Core, tested) decides what is printed; `PrintService` only lays it out, so don't put selection logic back in the UI.
 - **Printing threads.** `PrintDocument` is created once in `Initialize()` on the UI thread. The `PrintTaskRequested` callback's source delegate runs on a worker thread, so `SetSource` is marshaled back with the UI `DispatcherQueue` and a deferral. Creating or touching a `PrintDocument` on the worker thread throws `RPC_E_WRONG_THREAD` (`0x8001010E`).
 - **Build output.** Everything under `bin/` and `obj/` is generated; never edit it.

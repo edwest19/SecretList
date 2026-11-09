@@ -64,6 +64,17 @@ public sealed class FileFormatTests
         ":tag.Notes1.\n" +
         "\n";
 
+    // docs/file-format.md, "values outside the schema" worked example (with LF here).
+    // AI-generated (Claude): added when Save stopped erasing values the schema doesn't list.
+    private const string ValuesOutsideTheSchemaFile =
+        ":cat.LEGAL\n" +
+        ":nick.Lawyer\n" +
+        ":tag.Name.Jane\n" +
+        ":tag.Phone.\n" +
+        ":tag.Executor.Bob\n" +
+        ":tag.Zip.11743\n" +
+        "\n";
+
     /// <summary>The text as the app writes it on this OS (CRLF on Windows).</summary>
     private static string AsWritten(string lfText) => lfText.Replace("\n", Environment.NewLine);
 
@@ -188,6 +199,22 @@ public sealed class FileFormatTests
         Assert.AreEqual("Dr. Who", records[1].Values["Vet"], "the value keeps its periods; no empty line is needed after the last record");
     }
 
+    [TestMethod]
+    public void RecordsFile_ValuesOutsideTheSchema_AreWrittenExactly()
+    {
+        var path = Path.Combine(NewTempFolder(), "records.txt");
+        var record = new EntityRecord
+        {
+            Category = "LEGAL",
+            NickName = "Lawyer",
+            Values = new() { ["Zip"] = "11743", ["Name"] = "Jane", ["Fax"] = "", ["Executor"] = "Bob" },
+        };
+
+        new RecordFileStore().Save(path, [record], [Category("LEGAL", "Name", "Phone")]);
+
+        CollectionAssert.AreEqual(Encoding.UTF8.GetBytes(AsWritten(ValuesOutsideTheSchemaFile)), File.ReadAllBytes(path));
+    }
+
     // ---- the spec and these tests say the same thing ----
 
     [TestMethod]
@@ -195,7 +222,7 @@ public sealed class FileFormatTests
     {
         var spec = ReadRepoFile("docs", "file-format.md").Replace("\r\n", "\n");
 
-        foreach (var example in new[] { SchemaExampleInput, SchemaExampleWritten, RecordsExampleSchema, RecordsExampleFile })
+        foreach (var example in new[] { SchemaExampleInput, SchemaExampleWritten, RecordsExampleSchema, RecordsExampleFile, ValuesOutsideTheSchemaFile })
         {
             Assert.Contains("```text\n" + example + "```", spec);
         }

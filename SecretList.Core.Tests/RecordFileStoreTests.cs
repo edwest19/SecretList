@@ -11,8 +11,8 @@ using static SecretList.Core.Tests.TestHelper;
 namespace SecretList.Core.Tests;
 
 /// <summary>
-/// RecordFileStore as it behaves today, for records whose category and tags are
-/// all in the schema. (Values outside the schema are covered when that bug is fixed.)
+/// RecordFileStore for records whose category and tags are all in the schema.
+/// Values outside the schema, line breaks and replacing the file are in DataLossTests.
 /// </summary>
 [TestClass]
 public sealed class RecordFileStoreTests

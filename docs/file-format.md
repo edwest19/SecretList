@@ -1,19 +1,19 @@
 # SecretList file formats
 
-> AI-generated: this file was written by Claude (Anthropic) from the code in `SecretList.Core` as of 2026-11-08. SecretList is a project built with AI-generated code; see [README.md](../README.md).
+> AI-generated: this file was written by Claude (Anthropic) from the code in `SecretList.Core` as of 2026-11-08, and updated the same day when the data-loss bugs were fixed (the line syntax didn't change). SecretList is a project built with AI-generated code; see [README.md](../README.md).
 
 **Format version 1** (SecretList 0.1.0). SecretList keeps two text files in its MSIX package data folder (`ApplicationData.Current.LocalFolder`; see README, "What SecretList stores, and where"):
 
 | File | What it is | Read by | Written by |
 |---|---|---|---|
 | `schema.md` | The categories and, for each, its tags (fields), in order | `SchemaFileStore.Load` at startup | `SchemaFileStore.Save` once, to create it from the packaged default; Import Schema replaces it with a byte-for-byte copy of the picked file (`SchemaFileStore.TryImport`) |
-| `records.txt` | The records | `RecordFileStore.Load` at startup | `RecordFileStore.Save`, rewriting the whole file on every Lock & Save and every Delete |
+| `records.txt` | The records | `RecordFileStore.Load` at startup | `RecordFileStore.Save`, replacing the whole file on every Lock & Save and every Delete (through `records.txt.tmp`; see Writing) |
 
 Both formats are locked by the known-answer tests in `SecretList.Core.Tests/FileFormatTests.cs`. **Changing either format needs the owner's approval**, a new version of this document, and a plan for files already on disk. Never change a known-answer test's expected values to make it pass.
 
 ## Both files
 
-- **Encoding.** Written as UTF-8 with no byte-order mark (`File.WriteAllText`). Read as UTF-8, or as UTF-16 or UTF-32 if the file starts with that byte-order mark (`File.ReadAllLines`).
+- **Encoding.** Written as UTF-8 with no byte-order mark. Read as UTF-8, or as UTF-16 or UTF-32 if the file starts with that byte-order mark (`File.ReadAllLines`).
 - **Line endings.** Written with `Environment.NewLine`, which is CRLF (`\r\n`) on Windows, the only platform the app runs on. Read with CRLF, LF or CR.
 - **Plain text.** Both files can be read and edited in Notepad without the app.
 
@@ -34,9 +34,8 @@ Each line is trimmed, and blank lines are skipped. Then, in this order:
 - A tag whose name repeats an earlier tag in the same category (ignoring case) is ignored.
 - Category names are not checked for repeats: two `Category LEGAL` lines make two categories named `LEGAL`.
 - A category with no tags is kept.
-- Tag names may contain any character, including `.` (see the known limitations below).
 
-The file is **refused** if it contains no category, or if any category has more than **12** tags. The whole file is refused; it is never cut down to 12 tags. When `schema.md` is refused at startup, the app uses the packaged default (`Assets/DefaultSchema.md`) for that session, leaves `schema.md` untouched, and colors the "…" button red. When a file picked for Import Schema is refused, nothing changes.
+The file is **refused** if it contains no category, if any category has more than **12** tags, or if any tag name contains a period (`.`), because `records.txt` splits a `:tag.` line at its first period. The whole file is refused; it is never cut down to 12 tags. When `schema.md` is refused at startup, the app uses the packaged default (`Assets/DefaultSchema.md`) for that session, leaves `schema.md` untouched, and colors the "…" button red. When a file picked for Import Schema is refused, nothing changes.
 
 ### Writing
 
@@ -107,10 +106,11 @@ reads as two categories: `LEGAL` with tags `Name`, `Phone`, `Notes1`, and `PETS`
 (an empty line)
 ```
 
-- The `:tag.` lines are the tags of the record's category **in the current schema**, in schema order. A tag with no value is written with an empty value (`:tag.Phone.`).
-- The category is matched by exact name (case-sensitive).
-- Values are written exactly as typed. Nothing is escaped.
+- First come the tags of the record's category **in the current schema**, in schema order. A tag with no value is written with an empty value (`:tag.Phone.`). The category is matched by exact name (case-sensitive).
+- Then come the record's **other values**: tags the current schema doesn't list for that category (or, when the category isn't in the schema at all, every tag), ordered by tag name (ordinal), leaving out empty values. So a schema change never erases a value from the file.
+- Each line break in a nickname or value (CRLF, CR or LF) is written as one space. Nothing else is changed or escaped.
 - Every record, including the last, is followed by an empty line, so the file ends with an empty line.
+- The whole text is written to `records.txt.tmp` beside `records.txt`, flushed to disk, and then swapped in for `records.txt` (`File.Replace`), or renamed to `records.txt` when there is none yet. A save interrupted before the swap leaves `records.txt` as it was; a leftover `records.txt.tmp` is overwritten by the next save.
 
 ### Reading
 
@@ -167,12 +167,23 @@ and these three records, in this order: a LEGAL record "Lawyer" (Name `Jane Doe,
 
 (every line ending in CRLF on Windows: 278 bytes in all, UTF-8, no byte-order mark). Reading that file gives back the same three records.
 
+### Worked example: values outside the schema (known-answer test)
+
+With a schema whose `LEGAL` category has the tags `Name` and `Phone`, a LEGAL record "Lawyer" holding the values Zip `11743`, Name `Jane`, Fax (empty) and Executor `Bob` is written as:
+
+```text
+:cat.LEGAL
+:nick.Lawyer
+:tag.Name.Jane
+:tag.Phone.
+:tag.Executor.Bob
+:tag.Zip.11743
+
+```
+
+`Name` and `Phone` come from the schema, in schema order; `Executor` and `Zip` are kept after them in name order; the empty `Fax` is left out.
+
 ## Known limitations of format version 1
 
-These are bugs in how the app uses the format, not choices. They are to be fixed before the first release, each with a test that reproduces it first:
-
-- **Values outside the current schema are erased on save.** A tag the current schema doesn't list for the record's category, or every tag of a record whose category isn't in the schema, is not written, so the next Lock & Save or Delete removes it from `records.txt`. This happens after `schema.md` is refused (the default is used instead) or after Import Schema with different categories or tags.
-- **A tag name containing `.` loses its value.** The schema reader accepts it, but the records reader splits at the first `.`, so `:tag.Lic. No.12345` reads as tag `Lic` with value ` No.12345`, and the next save writes `:tag.Lic. No.` with no value.
-- **Line breaks in a value aren't encoded.** A value containing a line break is written across several lines; reading it back keeps only the first line, and an empty line inside the value ends the record there.
-- **A missing empty line drops a record.** If a `:cat.` line follows a record without an empty line between them, the earlier record is discarded when the file is read.
-- **Records whose category isn't in the schema are hidden.** They are kept in `records.txt` (category and nickname only, per the first limitation) but are not shown or printed.
+- **A missing empty line drops a record.** If a `:cat.` line follows a record without an empty line between them, the earlier record is discarded when the file is read. Files the app writes always have the empty line; this affects hand-edited files only.
+- **Records whose category isn't in the schema aren't shown on screen.** They are kept in `records.txt` with all their values and are printed after the others, but the app has no category to show them under until one is added to `schema.md`.

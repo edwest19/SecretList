@@ -150,27 +150,22 @@ public class PrintService
         _printDocument!.AddPagesComplete();
     }
 
-    // Builds one A4 page per two records, in schema order and then
-    // per-category list order - so category grouping is preserved in the
-    // reading sequence, but a sheet is simply "the next two records" and
-    // freely crosses category boundaries. The last sheet gets a blank
-    // bottom half if the total record count is odd.
+    // AI-generated (Claude): which records are printed, in what order, and which of
+    // their fields now comes from SecretList.Core's PrintContent (tested there):
+    // schema categories in schema order, then records whose category isn't in the
+    // schema, with values the schema doesn't list after the schema's fields. This only
+    // lays them out. A sheet is simply "the next two records" and freely crosses
+    // category boundaries. The last sheet gets a blank bottom half if the total
+    // record count is odd.
     private List<UIElement> BuildAllPages()
     {
-        var flat = new List<(EntityDefinition Def, EntityRecord Record)>();
-        foreach (var entityDef in _schema)
-        {
-            var typeRecords = _records.Where(r => r.Category == entityDef.Category).ToList();
-            foreach (var record in typeRecords)
-                flat.Add((entityDef, record));
-        }
+        var flat = PrintContent.Build(_schema, _records);
 
         var pages = new List<UIElement>();
         for (int i = 0; i < flat.Count; i += 2)
         {
             var top = flat[i];
-            (EntityDefinition Def, EntityRecord Record)? bottom =
-                i + 1 < flat.Count ? flat[i + 1] : null;
+            PrintedRecord? bottom = i + 1 < flat.Count ? flat[i + 1] : null;
 
             pages.Add(BuildA4Sheet(top, bottom));
         }
@@ -181,9 +176,7 @@ public class PrintService
     // One A4 sheet: top half, a thin fold-line marker, bottom half.
     // Bottom is optional - the very last sheet may only have a top half
     // if the total record count is odd.
-    private UIElement BuildA4Sheet(
-        (EntityDefinition Def, EntityRecord Record) top,
-        (EntityDefinition Def, EntityRecord Record)? bottom)
+    private UIElement BuildA4Sheet(PrintedRecord top, PrintedRecord? bottom) // AI-generated (Claude): takes PrintContent's records
     {
         var pageGrid = new Grid
         {
@@ -197,12 +190,12 @@ public class PrintService
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(FoldGap) });
         layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(HalfHeight) });
 
-        var topHalf = BuildRecordHalf(top.Def, top.Record);
+        var topHalf = BuildRecordHalf(top);
         Grid.SetRow(topHalf, 0);
         layout.Children.Add(topHalf);
 
-    var foldLine = new Microsoft.UI.Xaml.Shapes.Rectangle
-       {
+        var foldLine = new Microsoft.UI.Xaml.Shapes.Rectangle
+        {
             Height = 1,
             Fill = new SolidColorBrush(Microsoft.UI.Colors.Gray),
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -212,9 +205,9 @@ public class PrintService
         Grid.SetRow(foldLine, 1);
         layout.Children.Add(foldLine);
 
-        if (bottom.HasValue)
+        if (bottom != null)
         {
-            var bottomHalf = BuildRecordHalf(bottom.Value.Def, bottom.Value.Record);
+            var bottomHalf = BuildRecordHalf(bottom);
             Grid.SetRow(bottomHalf, 2);
             layout.Children.Add(bottomHalf);
         }
@@ -223,13 +216,13 @@ public class PrintService
         return pageGrid;
     }
 
-    // One record's content, sized to fit within a single A5-equivalent
-    // half of the A4 sheet. Safe to assume it always fits because
-    // SchemaFileStore rejects any schema with more than 12 tags in a
-    // category.
-    // Before:
-// After:
-    private FrameworkElement BuildRecordHalf(EntityDefinition entityDef, EntityRecord record){
+    // One record's content, within a single A5-equivalent half of the A4
+    // sheet: the category (gray), the nickname (bold), then each field that
+    // has a value. A category has at most 12 fields (SchemaFileStore), so a
+    // record with short values fits; values outside the schema or very long
+    // values can run past the half (README, Known limitations).
+    private FrameworkElement BuildRecordHalf(PrintedRecord record) // AI-generated (Claude): takes a PrintedRecord
+    {
         var halfGrid = new Grid { Height = HalfHeight };
 
         var content = new StackPanel
@@ -240,7 +233,7 @@ public class PrintService
 
         content.Children.Add(new TextBlock
         {
-            Text = entityDef.Category,
+            Text = record.Category,
             FontFamily = new FontFamily("Segoe UI"),
             FontSize = 14,
             FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
@@ -257,15 +250,11 @@ public class PrintService
             Margin = new Thickness(0, 0, 0, 4)
         });
 
-        foreach (var tag in entityDef.Tags.OrderBy(t => t.Order))
+        foreach (var field in record.Fields) // AI-generated (Claude): PrintContent already left out empty values
         {
-            string value = record.Values.TryGetValue(tag.Name, out var v) ? v : string.Empty;
-            if (string.IsNullOrWhiteSpace(value))
-                continue;
-
             content.Children.Add(new TextBlock
             {
-                Text = $"{tag.Name}: {value}",
+                Text = $"{field.Name}: {field.Value}",
                 FontFamily = new FontFamily("Segoe UI"),
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Microsoft.UI.Colors.Black),

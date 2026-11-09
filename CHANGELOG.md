@@ -6,6 +6,14 @@ Every release has a heading `## [X.Y.Z] - YYYY-MM-DD`. Changes not yet released 
 
 ## [Unreleased]
 
+### Fixed
+- **Saving no longer erases data.** `records.txt` keeps every value the current schema doesn't list: fields removed from a category, and all fields of records whose category isn't in the schema. They are written after the schema's fields, by name; empty ones are left out. Before, a schema change (or a typo in `schema.md`, which makes the app fall back to the default) followed by any save or delete removed them.
+- **A field name containing a period is refused.** `schema.md`, or a file chosen for Import Schema, with a tag name containing `.` is refused like any invalid schema. Before, such a field's value was read back under the wrong name and lost on the next save.
+- **Line breaks can't break `records.txt`.** A line break in a value or nickname is saved as a space. Before, it cut the record short, losing the rest of it.
+- **Saving can't leave `records.txt` half-written.** It is written to `records.txt.tmp`, flushed to disk, then swapped in. Before, it was overwritten in place.
+- **The printout includes everything in `records.txt`**: values the schema doesn't list (after the schema's fields) and records whose category isn't in the schema (after the others). A category name repeated in the schema no longer prints its records twice.
+- README: printing prints only fields that have a value, and the category in gray. The README had said every field, including empty ones.
+
 ### Changed
 - **The package is published by Edwin West** (`CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`, the name releases are signed as) instead of the template's `CN=AppPublisher`, and its version is 0.1.0.0. Windows treats it as a different package from earlier development builds, so records typed into those builds stay in their own data folder and aren't carried over.
 - SecretList no longer asks for the `systemAIModels` permission (Windows AI), which it never used. It asks only for `runFullTrust`.
