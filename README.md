@@ -15,7 +15,7 @@ This README is the specification. Each statement in it is meant to be checkable 
 
 ## Status
 
-**Not released yet.** Version 0.1.0 is in development. Before the first release, the data-loss bugs listed under [Known limitations](#known-limitations) are to be fixed and Backup added.
+**Not released yet.** Version 0.1.0 is in development. Backup is to be added before the first release (see [Known limitations](#known-limitations)).
 
 ## Is it safe?
 
@@ -37,7 +37,7 @@ Two files, in the app's MSIX package data folder (`ApplicationData.Current.Local
 
 `<publisher ID>` is computed by Windows from the package's publisher. For `CN=Edwin West, O=Edwin West, L=Huntington, S=ny, C=US`, the publisher of this repository's builds, it is `tmnx6yaak54a8`. `Scripts/Find-SecretListData.ps1` lists every SecretList data folder for the current Windows user and offers to open them; it changes nothing.
 
-The app opens no other files there. Checked by `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder`. The exact formats are in [docs/file-format.md](docs/file-format.md).
+The app opens no other files there, except that each save of `records.txt` is first written to `records.txt.tmp` in the same folder and then swapped in, so an interrupted save leaves the previous `records.txt` intact. Checked by `RepositoryRulesTests.AppCode_KeepsDataOnlyInThePackageDataFolder` and `DataLossTests.Save_ReplacesAnExistingFile_AndLeavesNoTemporaryFile`. The exact formats are in [docs/file-format.md](docs/file-format.md).
 
 **Uninstalling SecretList deletes this folder, including your records.** There is no Backup in the app yet, so copy `records.txt` and `schema.md` somewhere safe first.
 
@@ -96,9 +96,9 @@ Ctrl+F opens "Find by Nickname". Type part of a nickname and press Enter: every 
 
 **Print** opens the Windows print dialog with a preview of every record:
 
-- Records are printed in schema order (category by category), and within a category in the order they are stored.
+- Every record in `records.txt` is printed. First the schema's categories, in schema order, each with its records in the order they are stored. Then records whose category isn't in the schema, grouped by category. Checked by `DataLossTests.Print_*`.
 - Each A4 sheet holds two records, one per half, with a thin fold line between, so a folded sheet makes two A5 pages. Categories share sheets. If the number of records is odd, the bottom half of the last sheet is empty.
-- Each half shows the category, the nickname in bold, then every field of the category as `Field: value`, including empty ones, in black on white whatever the app's theme.
+- Each half shows the category in gray, the nickname in bold, then each field **that has a value** as `Field: value` in black: the schema's fields in schema order, then any values the schema doesn't list (left from an earlier schema), by field name. Empty fields aren't printed. The page is white whatever the app's theme.
 - The app asks for A4 paper and two-sided printing flipped on the short edge. Printers that don't support those ignore them, and the print dialog lets you change both.
 
 ## Categories and fields (`schema.md`)
@@ -114,7 +114,7 @@ What the app shows is defined by `schema.md`, a Markdown file you can edit in No
 ```
 
 - A `Category <name>` line starts a category; each `TAG <name>` line adds a field to it, in order. Heading marks (`#` to `######`) or a bullet (`-`, `*`) before them are optional, and case doesn't matter. Other lines are ignored. The full rules are in [docs/file-format.md](docs/file-format.md).
-- **At most 12 fields per category.** A file with a category of 13 or more fields, or with no category at all, is refused as a whole.
+- **At most 12 fields per category, and no period (`.`) in a field name.** A file with a category of 13 or more fields, a field name containing a period, or no category at all, is refused as a whole.
 - On first run, `schema.md` is created from the default below.
 - If `schema.md` is refused at startup, the app uses the default categories for that session and leaves the file as it is. The **…** button is **green** when `schema.md` was read, **red** when the default is being used instead.
 - **Export Schema** saves a copy of the default schema file anywhere you choose, to edit. **Import Schema** checks a `.md` or `.txt` file you pick: if it is valid it becomes `schema.md` (copied exactly) and the app shows its first category; if not, nothing changes and a message explains why. Import Schema is disabled while editing.
@@ -143,7 +143,7 @@ The default is `SecretList.UI/Assets/DefaultSchema.md`, shipped read-only inside
 
 ```
 
-Each record is a `:cat.` line (its category), a `:nick.` line (its nickname), one `:tag.<field>.<value>` line per field of its category in schema order (empty fields included), and an empty line. The file is UTF-8 and is rewritten whole on every save. The exact rules, with a worked example locked by a known-answer test, are in [docs/file-format.md](docs/file-format.md).
+Each record is a `:cat.` line (its category), a `:nick.` line (its nickname), one `:tag.<field>.<value>` line per field of its category in schema order (empty fields included), then any other non-empty values the record holds (fields the current schema doesn't list, so changing the schema never erases them), and an empty line. A line break typed or pasted into a value or nickname is saved as a space. The file is UTF-8 and is replaced whole on every save. The exact rules, with a worked example locked by a known-answer test, are in [docs/file-format.md](docs/file-format.md).
 
 ## Building and testing
 
@@ -172,6 +172,7 @@ Every pull request and every push to `main` runs `.github/workflows/build.yml` o
 The tests are:
 
 - `SchemaFileStoreTests` and `RecordFileStoreTests`: reading and writing the two files.
+- `DataLossTests`: the fixed data-loss bugs (values outside the schema, a period in a field name, line breaks, replacing the file) and what is printed.
 - `FileFormatTests`: known-answer tests for both formats, which also check that the worked examples in `docs/file-format.md` match.
 - `RepositoryRulesTests`: Microsoft packages only, no network API in the app's code, only `runFullTrust`, data only in the package data folder.
 - `ReleaseRulesTests`: publisher, version in `Directory.Build.props` and the manifest, unchanged package name, workflow actions pinned to commits, x64 only, solution file.
@@ -184,21 +185,17 @@ None yet. The version is set in `Directory.Build.props` (`0.1.0`) and `SecretLis
 
 ## Known limitations
 
-These are to be fixed before the first release:
+To be fixed before the first release:
 
-- **Saving can erase data.** When `schema.md` is refused (the default is used) or after Import Schema with different categories or fields, the next Lock & Save or Delete removes from `records.txt` every value the current schema doesn't list, including all fields of records in categories it doesn't have.
-- **A field name containing a period (`.`) loses its value** after the next save.
-- **Line breaks in a value aren't stored safely.** Fields are one-line boxes, but `records.txt` has no encoding for a line break; one would cut the record short.
-- **A hand-edited `records.txt` missing the empty line between two records loses the first of them** when read.
-- **Records whose category isn't in the current schema are not shown and not printed.**
 - **No Backup or Restore.** Uninstalling deletes your data; copy the two files yourself.
-- **`records.txt` is overwritten in place.** A save interrupted by a crash or power loss can leave it incomplete.
 
 Also:
 
+- **Records whose category isn't in the current schema are not shown on screen.** They are kept and printed; add the category to `schema.md` to see and edit them.
+- **A hand-edited `records.txt` missing the empty line between two records loses the first of them** when read. Files the app writes always have it.
 - Closing the window with its **X** while editing discards the edit without asking (only **Exit** asks).
-- Value length isn't limited; a record with very long values may not fit on half a sheet when printed.
-- Two `Category` lines with the same name make two categories with that name.
+- Value length isn't limited; a record with very long values, or with values left from an earlier schema, may not fit on half a sheet when printed.
+- Two `Category` lines with the same name make two categories with that name on screen (they are printed once).
 
 ## Repository layout
 

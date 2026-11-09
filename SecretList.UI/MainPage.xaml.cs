@@ -375,7 +375,8 @@ private void MainPage_Loaded(object sender, RoutedEventArgs e)
             var dialog = new ContentDialog
             {
                 Title = "Import Failed",
-                Content = $"\"{file.Name}\" couldn't be used - either it had no valid \"# Category\" / \"## TAG\" entries, or one of its categories had more than 12 tags. Nothing was imported; still using the previous categories.",
+                // AI-generated (Claude): added the third reason (a tag name containing a period).
+                Content = $"\"{file.Name}\" couldn't be used - it had no valid \"# Category\" / \"## TAG\" entries, one of its categories had more than 12 tags, or a tag name contained a period. Nothing was imported; still using the previous categories.",
                 CloseButtonText = "OK",
                 XamlRoot = this.Content.XamlRoot
             };
